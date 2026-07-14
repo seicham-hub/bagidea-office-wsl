@@ -28,7 +28,11 @@
 
 ---
 
-## 事前準備（Windows 側・初回のみ）
+## 事前準備（初回のみ）
+
+### 0. WSL: claude にログイン済みであること
+
+普段 WSL で claude を使っていればそのままでOK（未ログインなら WSL で `claude` を一度実行）。
 
 ### 1. fork を Windows 側に clone
 
@@ -65,42 +69,59 @@ Invoke-WebRequest "https://github.com/bagidea/bagidea-office/releases/download/v
 
 ---
 
-## 起動手順（毎回）
+## 起動（日常使い — 1コマンド）
 
-**順序が重要です — 必ず WSL のデーモンを先に起動してください。**
-（先に Windows シェルを起動すると、:8787 が空いているためシェルが Windows 側で独自にデーモンを spawn してしまい、データが分裂します）
-
-### 1. WSL: デーモン起動
-
-```bash
-cd ~/project/bagidea-office-wsl
-node daemon/server.js
-```
-
-起動ログが出て待機状態になればOK。claude には WSL 側でログイン済みであること（`claude` を一度実行）。
-
-### 2. Windows: 到達確認 → GUI 起動
+ランチャーが全部やります: **デーモンが落ちていれば WSL 内で自動起動**（`wsl.exe -- bash -lc` 経由、nvm の node も解決）→ :8787 のヘルス待ち → GUI 起動。
 
 ```powershell
-# 到達確認（JSON が返ればOK）
-curl.exe http://127.0.0.1:8787/health
-
-# GUI 起動（同梱のランチャー — デーモン到達チェック込み）
 powershell -ExecutionPolicy Bypass -File C:\dev\bagidea-office-wsl\run-hybrid-windows.ps1
 ```
 
-ランチャーを使わない場合は exe 直接起動でも同じです:
+停止も1コマンド（Windows の GUI + WSL のデーモンを両方止める）:
 
 ```powershell
-C:\dev\bagidea-office-wsl\shell\target\release\bagidea-office-shell.exe
+powershell -ExecutionPolicy Bypass -File C:\dev\bagidea-office-wsl\run-hybrid-windows.ps1 -Stop
 ```
 
-### 3. 停止
+> WSL のリポジトリパスがデフォルト（`~/project/bagidea-office-wsl`）と違う場合は `-WslPath`、
+> デフォルト以外のディストロを使う場合は `-Distro Ubuntu-22.04` のように指定。
+
+### Windows ログイン時の自動起動（ハイブリッドモード）
+
+```powershell
+# 登録 — PC 起動時に「WSLデーモン → GUI」の順で自動起動
+powershell -ExecutionPolicy Bypass -File C:\dev\bagidea-office-wsl\run-hybrid-windows.ps1 -Register
+
+# 解除
+powershell -ExecutionPolicy Bypass -File C:\dev\bagidea-office-wsl\run-hybrid-windows.ps1 -Unregister
+```
+
+### モード切替（WSL ⇄ Windows）
+
+自動起動の実体は HKCU Run キーの `BagIdeaOffice` という**同じ1つの値**で、どちらを指すかだけの違いです。切替はそれぞれ1コマンド:
+
+| モード | claude の実行場所 | 切替コマンド |
+|---|---|---|
+| **ハイブリッド**（このブランチ） | WSL | `run-hybrid-windows.ps1 -Register` |
+| **純Windows**（upstream 標準） | Windows | `bagidea startup on`（Windows 側、要 Windows インストール） |
+
+### 手動起動したい場合（デバッグ時）
+
+WSL でフォアグラウンド起動するとデーモンのログが直接見えます:
+
+```bash
+cd ~/project/bagidea-office-wsl && node daemon/server.js
+```
+
+その後 Windows 側でランチャー（または shell exe 直接）を起動。ランチャーは既にデーモンが生きていれば二重起動しません。
+
+> ⚠ **順序の原則**: shell exe を「デーモン不在のまま」直接起動しないこと。:8787 が空だとシェルが Windows 側で独自デーモンを spawn し、データが分裂します。ランチャー経由ならこの事故は起きません。
+
+### 停止の内訳（手動でやる場合）
 
 - **GUI**: トレイアイコン右クリック → Exit（シェルはデーモンを所有していないので、デーモンは生き残る = 正常）
-- **デーモン**: WSL のターミナルで `Ctrl+C`
-
-> `bagidea stop` を WSL で打っても **Windows 側のシェル/Godot は殺せません**（pkill は Linux プロセスのみ対象）。GUI はトレイから終了してください。
+- **デーモン**: フォアグラウンドなら `Ctrl+C`、バックグラウンドなら `pkill -f 'node.*daemon/server.js'`
+- `bagidea stop` を WSL で打っても **Windows 側のシェル/Godot は殺せません**（pkill は Linux プロセスのみ対象）
 
 ---
 
