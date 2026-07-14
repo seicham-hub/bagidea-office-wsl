@@ -35,6 +35,16 @@ const { RunWatchdog } = require("./watchdog");
 const { wireWorkspaceSettings } = require("./wire-hooks-runtime");
 const { killTree } = require("./kill-tree");   // cross-platform child reap (issue #15 review)
 
+// WSL hybrid mode (daemon in WSL, GUI on Windows). Two sides:
+//  • In WSL, wslx routes window/file/dialog work to the Windows side via
+//    interop (explorer.exe, powershell.exe, wt.exe run fine from WSL).
+//  • On win32 with daemon/hybrid.txt present, the REAL daemon lives in WSL —
+//    the shell's watchdog can't know that, so when it spawns us here we boot
+//    the WSL daemon instead and bow out. Without this, a WSL daemon hiccup
+//    would silently fork a second data store on the Windows side.
+const wslx = require("./wsl");
+if (wslx.hybridBounce(__dirname)) process.exit(0);
+
 // Issue #15 (Bug 1) — main runs need both a hard wall-clock cap and an idle
 // detector, or a stuck CLI retry loop pins a task in "started" until the CLI
 // gives up on its own (observed: 14 min). Sub-agents already have a 6-min
@@ -252,6 +262,22 @@ function rosterEvt() {
 function triggerRestart() {
   try {
     const { spawn } = require("child_process");
+    // Hybrid (daemon in WSL, GUI on Windows): the Linux CLI can't reach the
+    // Windows shell/Godot, so restart through the Windows-side launcher —
+    // it tears BOTH sides down and boots them back in order. The interop
+    // stub is detached and doesn't match the launcher's pkill pattern, so
+    // it survives this daemon being killed mid-restart.
+    if (wslx.isWSL() && wslx.guiRoot()) {
+      const ps1 = wslx.toWinPath(path.join(wslx.guiRoot(), "run-hybrid-windows.ps1"));
+      if (ps1) {
+        const c = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass",
+          "-File", ps1, "-Restart"],
+          { detached: true, stdio: "ignore", cwd: wslx.INTEROP_CWD });
+        c.on("error", (e) => console.error("[hybrid] restart via launcher failed:", e.message));
+        c.unref();
+        return;
+      }
+    }
     const cli = path.join(__dirname, "..", "cli", "bagidea.js");
     const root = path.join(__dirname, "..");
     if (process.platform === "win32") {
@@ -1126,6 +1152,15 @@ function winproj(action, id, cb) {
   } else if (process.platform === "darwin") {
     const { execFile } = require("child_process");
     execFile("/bin/bash", [MACPROJ, action, String(id || "")],
+      { timeout: 20000 }, (e, out) => cb && cb(e, out));
+  } else if (wslx.isWSL()) {
+    // Hybrid: project windows are Windows Terminal windows (opened via
+    // interop in /projects/open) — drive the SAME winproj.ps1 through
+    // powershell.exe. The script rides its \\wsl.localhost UNC path, which
+    // -File + ExecutionPolicy Bypass runs fine.
+    const win = wslx.toWinPath(WINPROJ);
+    if (!win) { if (cb) cb(null, ""); return; }
+    wslx.psExec(["-File", win, action, String(id || "")],
       { timeout: 20000 }, (e, out) => cb && cb(e, out));
   } else {
     if (cb) cb(null, "");
@@ -4171,24 +4206,48 @@ end tell`;
             // no-op on Linux, so hide/resume just don't apply.
             const m = String(psCmd).match(/^-Command "([\s\S]*)"$/);
             const inner = m ? m[1] : "";
-            const bashLine = `cd ${JSON.stringify(dir)}; ${inner ? inner + "; " : ""}exec bash`;
-            const terms = [
-              ["x-terminal-emulator", ["-e", "bash", "-lc", bashLine]],
-              ["gnome-terminal", ["--working-directory=" + dir, "--", "bash", "-lc", bashLine]],
-              ["konsole", ["--workdir", dir, "-e", "bash", "-lc", bashLine]],
-              ["xfce4-terminal", ["--working-directory=" + dir, "-e", "bash -lc " + JSON.stringify(bashLine)]],
-              ["xterm", ["-e", "bash", "-lc", bashLine]],
-            ];
-            (function tryTerm(i) {
-              if (i >= terms.length) return;
-              const c = spawn(terms[i][0], terms[i][1], { detached: true, stdio: "ignore" });
-              c.on("error", () => tryTerm(i + 1));
-            })(0);
+            const openLinuxTerm = () => {
+              const bashLine = `cd ${JSON.stringify(dir)}; ${inner ? inner + "; " : ""}exec bash`;
+              const terms = [
+                ["x-terminal-emulator", ["-e", "bash", "-lc", bashLine]],
+                ["gnome-terminal", ["--working-directory=" + dir, "--", "bash", "-lc", bashLine]],
+                ["konsole", ["--workdir", dir, "-e", "bash", "-lc", bashLine]],
+                ["xfce4-terminal", ["--working-directory=" + dir, "-e", "bash -lc " + JSON.stringify(bashLine)]],
+                ["xterm", ["-e", "bash", "-lc", bashLine]],
+              ];
+              (function tryTerm(i) {
+                if (i >= terms.length) return;
+                const c = spawn(terms[i][0], terms[i][1], { detached: true, stdio: "ignore" });
+                c.on("error", () => tryTerm(i + 1));
+              })(0);
+            };
+            if (wslx.isWSL()) {
+              // Hybrid: open a REAL Windows Terminal window (interop) that drops
+              // back into this WSL dir — claude still runs on the WSL side.
+              // Same --suppressApplicationTitle marker as win32, so the winproj
+              // hide/resume sweep finds the window. wt.exe missing → fall
+              // back to a WSLg terminal.
+              spawn("wt.exe", ["-w", "new", "new-tab",
+                "--title", title, "--suppressApplicationTitle",
+                "wsl.exe", "--cd", dir, "--", "bash", "-lic",
+                `${inner ? inner + "; " : ""}exec bash`],
+                { detached: true, stdio: "ignore", cwd: wslx.INTEROP_CWD })
+                .on("error", openLinuxTerm);
+            } else {
+              openLinuxTerm();
+            }
           }
         };
         if (mode === "folder") {
-          const openCmd = process.platform === "win32" ? "explorer" : "open";
-          spawn(openCmd, [dir], { detached: true });
+          if (wslx.isWSL()) {
+            // Hybrid: show the WSL dir in the WINDOWS Explorer (\\wsl.localhost).
+            const w = wslx.toWinPath(dir);
+            spawn("explorer.exe", [w || dir], { detached: true, cwd: wslx.INTEROP_CWD })
+              .on("error", (e) => console.error("[hybrid] explorer.exe:", e.message));
+          } else {
+            const openCmd = process.platform === "win32" ? "explorer" : "open";
+            spawn(openCmd, [dir], { detached: true });
+          }
         } else if (mode === "shell") {
           // Plain shell, no marker — not counted as "project open".
           launch("", path.basename(dir));
@@ -4355,6 +4414,18 @@ end tell`;
           if (e) { res.writeHead(500); res.end(String(e.message)); return; }
           picked(String(out || "").trim());
         });
+    } else if (wslx.isWSL()) {
+      // Hybrid: pop the WINDOWS folder picker via interop (powershell 5.1 =
+      // STA, same constraint as the win32 branch), then map the choice back
+      // to a WSL path (C:\… → /mnt/c/…, \\wsl.localhost\… → native).
+      const ps = "Add-Type -AssemblyName System.Windows.Forms; " +
+        "$f = New-Object System.Windows.Forms.FolderBrowserDialog; " +
+        "if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath } else { '' }";
+      wslx.psExec(["-Command", ps], { timeout: 300000 }, (e, out) => {
+        if (e) { res.writeHead(500); res.end(String(e.message)); return; }
+        const w = String(out || "").trim();
+        picked(w ? (wslx.toWslPath(w) || w) : "");
+      });
     } else {
       // Linux: zenity if installed. ENOENT → 404 (client falls back to in-house).
       execFile("zenity", ["--file-selection", "--directory"],
@@ -4745,6 +4816,14 @@ end tell`;
         // so a single combined token is the reliable form (spaces included).
         if (process.platform === "win32") spawn("explorer.exe", ["/select," + p], { detached: true });
         else if (process.platform === "darwin") spawn("open", ["-R", p], { detached: true });
+        else if (wslx.isWSL()) {
+          // Hybrid: reveal in the WINDOWS Explorer via \\wsl.localhost.
+          // Interop off (appendWindowsPath=false) → ENOENT → WSLg fallback.
+          const w = wslx.toWinPath(p);
+          if (w) spawn("explorer.exe", ["/select," + w], { detached: true, cwd: wslx.INTEROP_CWD })
+            .on("error", () => spawn("xdg-open", [path.dirname(p)], { detached: true }).on("error", () => {}));
+          else spawn("xdg-open", [path.dirname(p)], { detached: true });
+        }
         else spawn("xdg-open", [path.dirname(p)], { detached: true });
         res.writeHead(200); res.end("ok");
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
@@ -4762,6 +4841,8 @@ end tell`;
         if (/^https?:\/\//i.test(p)) {
           if (process.platform === "win32") spawn("cmd", ["/c", "start", "", p], { detached: true, windowsHide: true });
           else if (process.platform === "darwin") spawn("open", [p], { detached: true });
+          else if (wslx.isWSL()) spawn("cmd.exe", ["/c", "start", "", p], { detached: true, cwd: wslx.INTEROP_CWD })
+            .on("error", () => spawn("xdg-open", [p], { detached: true }).on("error", () => {}));
           else spawn("xdg-open", [p], { detached: true });
           res.writeHead(200); return res.end("ok");
         }
@@ -4781,6 +4862,13 @@ end tell`;
         if (!fs.existsSync(p)) { res.writeHead(404); return res.end("not found"); }
         if (process.platform === "win32") spawn("cmd", ["/c", "start", "", p], { detached: true, windowsHide: true });
         else if (process.platform === "darwin") spawn("open", [p], { detached: true });
+        else if (wslx.isWSL()) {
+          // Hybrid: open in the WINDOWS default app via \\wsl.localhost.
+          const w = wslx.toWinPath(p);
+          if (w) spawn("cmd.exe", ["/c", "start", "", w], { detached: true, cwd: wslx.INTEROP_CWD })
+            .on("error", () => spawn("xdg-open", [p], { detached: true }).on("error", () => {}));
+          else spawn("xdg-open", [p], { detached: true });
+        }
         else spawn("xdg-open", [p], { detached: true });
         res.writeHead(200); res.end("ok");
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
@@ -4884,6 +4972,13 @@ end tell`;
       const tmp = require("os").tmpdir();
       try { fs.unlinkSync(path.join(tmp, "bagidea_editor_ready")); } catch {}
       fs.writeFileSync(path.join(tmp, "bagidea_editor_open_request"), String(Date.now()));
+      // Hybrid: the WINDOWS shell watches the WINDOWS temp dir for these
+      // flags — mirror them there (drvfs write), or the editor never opens.
+      const winTmp = wslx.isWSL() ? wslx.winTempDir() : null;
+      if (winTmp) {
+        try { fs.unlinkSync(path.join(winTmp, "bagidea_editor_ready")); } catch {}
+        try { fs.writeFileSync(path.join(winTmp, "bagidea_editor_open_request"), String(Date.now())); } catch {}
+      }
       // fallback: if the shell isn't running, launch directly after a beat
       const gdir = path.join(__dirname, "..", "godot");
       let godot = "";
@@ -4900,7 +4995,8 @@ end tell`;
         const bin = path.join(gdir, "bin-linux", "godot");
         godot = fs.existsSync(bin) ? bin : (process.env.BAGIDEA_GODOT || "godot");
       }
-      const shellUp = fs.existsSync(path.join(tmp, "bagidea_shell_alive"));
+      const shellUp = fs.existsSync(path.join(tmp, "bagidea_shell_alive")) ||
+        (winTmp ? fs.existsSync(path.join(winTmp, "bagidea_shell_alive")) : false);
       if (!shellUp && fs.existsSync(godot)) {
         spawn(godot, ["--path", gdir, "--", "--editor3d"],
           { detached: true, stdio: "ignore", windowsHide: false }).unref();
@@ -5339,6 +5435,12 @@ end tell`;
         reg.monitor = idx;
         saveReg();
         fs.writeFileSync(path.join(__dirname, "monitor.txt"), String(idx));
+        // Hybrid: the shell reads monitor.txt from the WINDOWS clone's
+        // daemon/ dir (its own root) — mirror the choice there too.
+        try {
+          const g = wslx.guiRoot();
+          if (g) fs.writeFileSync(path.join(g, "daemon", "monitor.txt"), String(idx));
+        } catch {}
         broadcast({ type: "ui.monitor", index: idx }, false);
         res.writeHead(200); res.end("ok");
         // Give the response a beat to flush, then relaunch the stack.
@@ -5924,7 +6026,7 @@ end tell`;
     // so this field is informational, not a guarantee.
     const nativePick = process.platform === "win32" || process.platform === "darwin"
       ? true
-      : canZenity();
+      : (wslx.isWSL() || canZenity());   // hybrid uses the Windows picker via interop
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({
       platform: process.platform,

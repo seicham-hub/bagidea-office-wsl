@@ -33,6 +33,9 @@ daemon/projects.json
 daemon/monitor.txt
 daemon/monitors.txt
 daemon/monitor-debug.log
+daemon/hybrid.txt
+daemon/hybrid.txt.stale
+daemon/hybrid-bounce.stamp
 daemon/proposals.json
 
 # Adapter session workspace (keep only the permission-hook config)

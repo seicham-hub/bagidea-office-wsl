@@ -103,7 +103,10 @@ powershell -ExecutionPolicy Bypass -File C:\dev\bagidea-office-wsl\run-hybrid-wi
 | モード | claude の実行場所 | 切替コマンド |
 |---|---|---|
 | **ハイブリッド**（このブランチ） | WSL | `run-hybrid-windows.ps1 -Register` |
-| **純Windows**（upstream 標準） | Windows | `bagidea startup on`（Windows 側、要 Windows インストール） |
+| **純Windows**（upstream 標準） | Windows | `run-hybrid-windows.ps1 -Unregister` → `bagidea startup on` |
+
+> ⚠ 純Windowsへ戻すときは **必ず先に `-Unregister`**。ハイブリッドマーカー（`daemon\hybrid.txt`）が
+> 残っていると、Windows 側で起動したデーモンは WSL にバウンスし続けます（`-Unregister` が消します）。
 
 ### 手動起動したい場合（デバッグ時）
 
@@ -137,19 +140,38 @@ cd ~/project/bagidea-office-wsl && node daemon/server.js
 | 6 | プロジェクト作成で WSL パスを指定（例 `/home/seiga/project/...`） | 作成でき、エージェントがその中で作業できる |
 | 7 | GUI を Exit → 再起動 | デーモンは生き続け、再接続できる |
 
-## 既知の制限（v1 = 未改修で予想される劣化）
+**v2（interop 対応）の追加チェック:**
 
-これらは本ブランチで今後改修する候補。**動かなくても想定内**です:
-
-| 機能 | 状況 | 原因 |
+| # | 確認項目 | 期待結果 |
 |---|---|---|
-| 🗺 3D オフィスエディタを開く | ❌ 開かない | デーモン(WSL)がリクエストフラグを WSL の `/tmp` に書くが、シェルは Windows の `%TEMP%` を監視している |
-| 🖥 マルチモニタ選択 | ❌ 効かない | デーモンが WSL チェックアウトの `daemon/monitor.txt` に書くが、シェルは Windows クローン側の同ファイルを読む |
-| プロジェクトウィンドウの表示/整列 | ⚠ 劣化 | デーモンが Linux コードパス（wmctrl 等）を使うため Windows のウィンドウを操作できない |
-| エクスプローラで開く / ファイルを開く | ⚠ 劣化 | 同上（xdg-open 系）。WSLg 側で開くことはある |
-| UI からの再起動（⚙ → restart） | ❌ 使わない | デーモンが Linux 用シェルバイナリを relaunch しようとする |
-| デーモンが死んだ場合 | ⚠ 注意 | シェルのウォッチドッグが Windows 側 node で独自デーモンを起こす可能性 → GUI を終了し、WSL デーモンを先に再起動すること |
-| 音声（TTS のローカル再生） | ⚠ 環境依存 | WSL 側再生は WSLg PulseAudio 次第。オーバーレイ内の再生（WebView2）は動く見込み |
+| 8 | ⋯ → 🗺 3D オフィスエディタを開く | スプラッシュ → エディタが別ウィンドウで開く |
+| 9 | プロジェクトの ▶ 開く | **Windows Terminal** が開き、WSL のプロジェクトディレクトリに入っている |
+| 10 | プロジェクト作成 → 📁 フォルダ選択 | **Windows のフォルダ選択ダイアログ**が出て、選択結果が WSL パスで入る |
+| 11 | チャットのファイル添付 → 「エクスプローラで表示」 | Windows のエクスプローラが `\\wsl.localhost\...` で開く |
+| 12 | トレイ → Restart office | 両側（GUI + デーモン）が順に再起動して戻ってくる |
+| 13 | WSL で `pkill -f 'node.*daemon/server.js'` → 10秒待つ | ウォッチドッグのバウンスで **WSL 側に**デーモンが復活する（Windows 側 `tasklist \| findstr node` に server.js の node が残らない） |
+| 14 | ⋯ → 🖥 Display でモニタ変更（マルチモニタ時） | 選んだモニタに壁紙が移って再起動する |
+
+## v2: ハイブリッド対応済みの機能（Windows interop 経由）
+
+v1 で「想定劣化」としていた項目は、デーモン側の WSL 検出 + Windows interop
+（`explorer.exe` / `powershell.exe` / `wt.exe` / `wsl.exe` は WSL⇄Windows 双方向で呼べる）で対応済みです。
+実装は `daemon/wsl.js` + `daemon/server.js` の各分岐。**Rust シェルの変更なし**（プレビルド exe のままでOK）。
+
+| 機能 | v2 の動き | 実装 |
+|---|---|---|
+| 🗺 3D オフィスエディタを開く | ✅ 開く | デーモンがリクエストフラグを **Windows の %TEMP% にもミラー**（interop で `$env:TEMP` を1回取得してキャッシュ） |
+| 🖥 マルチモニタ選択 | ✅ 効く | `monitor.txt` を **Windows クローン側にもミラー書き**（ランチャーが渡す `BAGIDEA_GUI_ROOT` で場所を知る） |
+| プロジェクトを開く / 表示・整列 | ✅ 動く | **Windows Terminal を interop で起動**し `wsl.exe --cd <dir>` で WSL に入る（claude は WSL 側のまま）。タイトルマーカー方式はそのままなので `winproj.ps1` の hide/resume も interop 経由で動く |
+| エクスプローラで開く / ファイルを開く | ✅ 動く | `wslpath -w` で `\\wsl.localhost\...` に変換して `explorer.exe` / `cmd start` |
+| フォルダ選択ダイアログ | ✅ ネイティブ化 | Windows の FolderBrowserDialog を interop で表示し、結果を `wslpath -u` で WSL パスに戻す |
+| UI からの再起動（⚙ / トレイ → restart） | ✅ 動く | デーモンが Windows 側の `run-hybrid-windows.ps1 -Restart` を interop で起動（両側を正しい順で再起動） |
+| デーモンが死んだ場合 | ✅ 自己修復 | シェルのウォッチドッグが Windows 側でデーモンを spawn しても、`daemon/hybrid.txt` を見て **WSL デーモンを起動し直して即終了**（バウンス）。データ分裂は起きない |
+| 音声（TTS のローカル再生） | ⚠ 環境依存のまま | オーバーレイ内の再生（WebView2）は動く見込み。WSL 側再生（`bagidea say`）は WSLg PulseAudio 次第 |
+
+> `daemon/hybrid.txt` はランチャーが Windows クローンに自動生成するハイブリッドモードのマーカーです
+> （`{"wslPath":"...","distro":""}`）。**純Windowsモードに戻すときは `-Unregister` で消える**
+> （手動で消してもOK）。これが残っていると Windows 側でデーモンを起動してもWSLにバウンスします。
 
 ## トラブルシューティング
 

@@ -7,17 +7,25 @@
 # Daily use:
 #   run-hybrid-windows.ps1              start everything (daemon in WSL + GUI)
 #   run-hybrid-windows.ps1 -Stop        stop everything (GUI on Windows + daemon in WSL)
+#   run-hybrid-windows.ps1 -Restart     stop, then start (the daemon's /ui/restart calls this)
 #   run-hybrid-windows.ps1 -Register    launch automatically at Windows login (hybrid mode)
-#   run-hybrid-windows.ps1 -Unregister  remove the login autostart
+#   run-hybrid-windows.ps1 -Unregister  remove the login autostart (+ the hybrid marker)
 #
 # Mode selection (hybrid vs pure-Windows) is just which command the autostart
 # Run key points at: -Register points it here (WSL daemon); the stock installer /
 # `bagidea startup on` points it at the shell exe (Windows daemon). Same value
 # name ("BagIdeaOffice"), so switching either way is one command.
 #
+# This script also maintains daemon\hybrid.txt in THIS clone. Its presence
+# tells a daemon accidentally spawned on Windows (e.g. by the shell's
+# watchdog when the WSL daemon hiccups) to boot the WSL daemon and exit,
+# instead of serving a second data store. Delete it (-Unregister does) when
+# going back to pure-Windows mode.
+#
 # See WSL-HYBRID.md for setup + the verification checklist.
 param(
   [switch]$Stop,
+  [switch]$Restart,
   [switch]$Register,
   [switch]$Unregister,
   # Repo path inside WSL (the daemon + all data live there).
@@ -28,6 +36,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ROOT = $PSScriptRoot
 $RUNKEY = "HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
+$HYBRID_TXT = Join-Path $ROOT "daemon\hybrid.txt"
 
 function Fail($msg) { Write-Host "  x $msg" -ForegroundColor Red; exit 1 }
 function Ok($msg)   { Write-Host "  + $msg" -ForegroundColor Green }
@@ -45,24 +54,40 @@ function DaemonUp {
   catch { return $false }
 }
 
+# $WslPath is embedded in bash strings below and in hybrid.txt (which the
+# daemon's bounce embeds the same way) — refuse the characters that could
+# escape the quoting instead of trying to escape them (mirrors daemon/wsl.js).
+if ($WslPath -match '["\\$' + '`' + ']') {
+  Fail "unsupported characters in -WslPath (no `" \ `$ or backtick): $WslPath"
+}
+
+# The hybrid-mode marker the daemon's win32 bounce reads (daemon/wsl.js).
+# UTF8 (not ascii) so a non-ASCII path/distro survives; the daemon strips the BOM.
+function Write-HybridMarker {
+  $json = @{ wslPath = $WslPath; distro = $Distro } | ConvertTo-Json -Compress
+  Set-Content -Path $HYBRID_TXT -Value $json -Encoding utf8
+}
+
 # ---- -Register / -Unregister: login autostart (HKCU Run) ---------------------
 if ($Register) {
+  Write-HybridMarker
   $self = Join-Path $ROOT "run-hybrid-windows.ps1"
   $cmd = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$self`" -WslPath `"$WslPath`""
   if ($Distro) { $cmd += " -Distro `"$Distro`"" }
   reg add $RUNKEY /v BagIdeaOffice /t REG_SZ /d $cmd /f | Out-Null
   Ok "registered: BagIdea Office starts at Windows login in HYBRID mode (daemon in WSL)"
-  Info "switch back to pure-Windows mode anytime: bagidea startup on  (re-points the same key at the shell exe)"
+  Info "switch back to pure-Windows mode: -Unregister, then bagidea startup on"
   exit 0
 }
 if ($Unregister) {
   reg delete $RUNKEY /v BagIdeaOffice /f 2>$null | Out-Null
-  Ok "login autostart removed"
+  if (Test-Path $HYBRID_TXT) { Remove-Item $HYBRID_TXT -Force }
+  Ok "login autostart removed (hybrid marker cleared - pure-Windows mode is available again)"
   exit 0
 }
 
-# ---- -Stop: tear the whole hybrid stack down ---------------------------------
-if ($Stop) {
+# ---- -Stop / -Restart: tear the whole hybrid stack down ----------------------
+if ($Stop -or $Restart) {
   # GUI side (Windows): shell + the Godot world (branded or stock name).
   foreach ($p in @("bagidea-office-shell", "BagIdeaOffice")) {
     taskkill /IM "$p.exe" /T /F 2>$null | Out-Null
@@ -73,19 +98,31 @@ if ($Stop) {
   # Daemon side (WSL).
   & wsl.exe (WslArgs @("bash", "-lc", "pkill -f 'node.*daemon/server\.js' || true"))
   Ok "stopped: GUI (Windows) + daemon (WSL)"
-  exit 0
+  if ($Stop) { exit 0 }
+  Start-Sleep -Seconds 2   # let :8787 and the single-instance mutex release
 }
 
 # ---- start: daemon in WSL first, then the GUI --------------------------------
+Write-HybridMarker
 # 1) Boot the WSL daemon if :8787 is silent. bash -lc so nvm-installed node is
 #    on PATH; nohup+disown so it survives wsl.exe returning (and keeps the WSL
-#    VM alive). Skips itself if a daemon is already listening.
+#    VM alive). BAGIDEA_GUI_ROOT points the daemon back at THIS clone so it can
+#    mirror shell-facing files (monitor.txt) and drive the hybrid restart.
 if (DaemonUp) {
   Ok "daemon already running on 127.0.0.1:8787"
 } else {
   Info "starting the daemon inside WSL ($(if ($Distro) { $Distro } else { 'default distro' }): $WslPath)..."
-  $boot = "cd $WslPath && (curl -s -m1 http://127.0.0.1:8787/health >/dev/null 2>&1 || " +
-          "(nohup node daemon/server.js >> daemon/daemon.log 2>&1 & disown))"
+  # $ROOT rides inside bash single quotes — an apostrophe in the install path
+  # (C:\Users\O'Brien) would terminate them early. Strip it (same tradeoff as
+  # daemon/wsl.js: the mangled path fails wslpath → GUI-root features degrade
+  # gracefully instead of the whole boot line breaking).
+  $rootSafe = $ROOT -replace "'", ""
+  $guiRootBash = 'BAGIDEA_GUI_ROOT="$(wslpath -u ' + "'" + $rootSafe + "'" + ')"'
+  # Quote the cd target for bash — but a leading ~ only expands unquoted, so
+  # rewrite it as $HOME inside the quotes (same rule as daemon/wsl.js).
+  $cdTarget = if ($WslPath.StartsWith("~/")) { '"$HOME/' + $WslPath.Substring(2) + '"' } else { '"' + $WslPath + '"' }
+  $boot = "cd $cdTarget && (curl -s -m1 http://127.0.0.1:8787/health >/dev/null 2>&1 || " +
+          "($guiRootBash nohup node daemon/server.js >> daemon/daemon.log 2>&1 & disown))"
   & wsl.exe (WslArgs @("bash", "-lc", $boot))
   if ($LASTEXITCODE -ne 0) { Fail "wsl.exe failed - is WSL installed and the repo at $WslPath ? (see WSL-HYBRID.md)" }
   # Cold login can mean a full WSL VM boot + node start: allow up to 90s.
