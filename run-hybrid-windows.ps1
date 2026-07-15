@@ -157,8 +157,15 @@ if (DaemonUp) {
 }
 
 # 2) Godot: branded exe in-repo wins, else BAGIDEA_GODOT (same order as the shell).
+# Read the User-scope value directly, not just $env:BAGIDEA_GODOT — a terminal
+# opened BEFORE the var was set won't have it in-process (User env doesn't
+# propagate to already-running shells), which looked like "Godot not found"
+# even though the var was set correctly. The registry read always sees it.
 $branded = Join-Path $ROOT "godot\bin\BagIdeaOffice.exe"
-$godot = if (Test-Path $branded) { $branded } else { $env:BAGIDEA_GODOT }
+$godotEnv = $env:BAGIDEA_GODOT
+if (-not $godotEnv) { $godotEnv = [Environment]::GetEnvironmentVariable("BAGIDEA_GODOT", "User") }
+if (-not $godotEnv) { $godotEnv = [Environment]::GetEnvironmentVariable("BAGIDEA_GODOT", "Machine") }
+$godot = if (Test-Path $branded) { $branded } else { $godotEnv }
 if (-not $godot -or -not (Test-Path $godot)) {
   Fail "Godot not found - set the BAGIDEA_GODOT env var to the Godot 4.6.x exe (see WSL-HYBRID.md step 2)"
 }

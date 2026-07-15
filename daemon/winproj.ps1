@@ -79,23 +79,44 @@ $cb = [WU+EnumProc]{ param($h, $l)
 }
 [void][WU]::EnumWindows($cb, [IntPtr]::Zero)
 
-# Session hosts: powershell with the strict comment marker.
-$hosts = $all | Where-Object {
-  $_.Name -eq "powershell.exe" -and $_.CommandLine -match "#BAGIDEA_PROJ_([\w-]+)"
+# ── Project → window resolution ──────────────────────────────────────────
+# PRIMARY signal: the TITLE marker. Every project window is spawned with
+# --title BAGIDEA_PROJ_<id> --suppressApplicationTitle, so its caption is a
+# globally-unique, LOCKED marker (a CASCADIA window WITHOUT it is never
+# touched). This is the ONLY signal that works for the WSL-HYBRID launch:
+# there claude runs INSIDE WSL and there is NO powershell.exe host on the
+# Windows side, so the old host-anchored sweep saw nothing even though the
+# Windows Terminal window is right here in $script:wins.
+$byTitle = @{}
+foreach ($w in $script:wins) {
+  if ($w.title -match 'BAGIDEA_PROJ_([\w-]+)') {
+    $tid = $Matches[1]
+    # First match wins, but a VISIBLE window always beats a hidden one.
+    if (-not $byTitle.ContainsKey($tid) -or $w.vis) { $byTitle[$tid] = $w }
+  }
 }
 
-foreach ($p in $hosts) {
-  if ($p.CommandLine -notmatch '#BAGIDEA_PROJ_([\w-]+)') { continue }
-  $projId = $Matches[1]
+# FALLBACK signal: a powershell.exe host carrying the strict #BAGIDEA_PROJ_<id>
+# comment. Needed for the classic-console (conhost, no Windows Terminal) launch
+# whose window title isn't the marker, and it gives us the host PID to taskkill
+# on "stop". Absent in hybrid mode (claude is a Linux process).
+$hostById = @{}
+foreach ($p in ($all | Where-Object {
+    $_.Name -eq "powershell.exe" -and $_.CommandLine -match "#BAGIDEA_PROJ_([\w-]+)" })) {
+  if ($p.CommandLine -match '#BAGIDEA_PROJ_([\w-]+)') { $hostById[$Matches[1]] = $p }
+}
 
-  # 1) Title-locked window (Windows Terminal path) — globally unique.
-  $win = $null
-  foreach ($w in $script:wins) {
-    if ($w.title -match "BAGIDEA_PROJ_$projId") { $win = $w; break }
-  }
+# Every project id we can see, from either signal.
+$ids = New-Object System.Collections.Generic.HashSet[string]
+foreach ($k in $byTitle.Keys)  { [void]$ids.Add($k) }
+foreach ($k in $hostById.Keys) { [void]$ids.Add($k) }
 
-  # 2) Classic console owned by the host family (conhost fallback path).
-  if (-not $win) {
+foreach ($projId in $ids) {
+  # Resolve the window: title marker first, else walk the host's process family
+  # to its classic console (conhost fallback path).
+  $win = if ($byTitle.ContainsKey($projId)) { $byTitle[$projId] } else { $null }
+  $p = if ($hostById.ContainsKey($projId)) { $hostById[$projId] } else { $null }
+  if (-not $win -and $p) {
     $family = New-Object System.Collections.Generic.List[string]
     if ($p.ParentProcessId) { $family.Add([string]$p.ParentProcessId) }
     $queue = @([string]$p.ProcessId)
@@ -128,9 +149,11 @@ foreach ($p in $hosts) {
         # Close the WINDOW itself (WM_CLOSE) — killing only the shell process
         # left the Windows Terminal window lingering, so the project looked
         # "still open" and any click re-detected it as active. This is OUR
-        # dedicated `-w new` window (title-locked), so closing it is safe.
+        # dedicated `-w new` window (title-locked), so closing it is safe. In
+        # hybrid mode closing the window ends the wsl.exe session, which tears
+        # down the WSL-side bash/claude; there's no host PID to taskkill.
         if ($win) { [void][WU]::PostMessage($win.h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) }
-        taskkill /PID $p.ProcessId /T /F | Out-Null
+        if ($p) { taskkill /PID $p.ProcessId /T /F | Out-Null }
       }
     }
   }

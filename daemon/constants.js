@@ -4,21 +4,21 @@ const REPLAY_COUNT = 80;
 const MAX_STAFF = 18;
 
 const BUILTIN_TOOLS = {
-  Read: "อ่านไฟล์ / รูปภาพ / PDF",
-  Glob: "ค้นหาไฟล์จากชื่อหรือแพทเทิร์น",
-  Grep: "ค้นหาข้อความ/โค้ดในไฟล์",
-  Edit: "แก้ไขไฟล์ที่มีอยู่",
-  Write: "สร้างไฟล์ใหม่ / เขียนทับ",
-  Bash: "รันคำสั่งเชลล์และโปรแกรม",
-  WebSearch: "ค้นหาข้อมูลบนเว็บ",
-  WebFetch: "เปิดอ่านหน้าเว็บ",
-  Task: "ปล่อย sub-agent ช่วยทำงานย่อย",
-  TodoWrite: "จดและติดตามรายการงาน",
-  NotebookEdit: "แก้ไข Jupyter notebook",
-  Skill: "เรียกใช้สกิลที่ได้รับมอบหมาย",
-  BashOutput: "อ่านผลลัพธ์ของงานเบื้องหลังที่สั่งรันไว้",
-  KillShell: "หยุดงานเบื้องหลังที่สั่งรันไว้",
-  SlashCommand: "เรียกใช้คำสั่ง slash ที่ติดตั้งไว้",
+  Read: "ファイル / 画像 / PDF を読む",
+  Glob: "名前やパターンでファイルを検索",
+  Grep: "ファイル内のテキスト / コードを検索",
+  Edit: "既存のファイルを編集",
+  Write: "新規ファイルの作成 / 上書き",
+  Bash: "シェルコマンドやプログラムを実行",
+  WebSearch: "ウェブ上の情報を検索",
+  WebFetch: "ウェブページを開いて読む",
+  Task: "sub-agent を出してサブ業務を手伝わせる",
+  TodoWrite: "タスク一覧を記録して追跡",
+  NotebookEdit: "Jupyter notebook を編集",
+  Skill: "割り当てられた skill を呼び出す",
+  BashOutput: "実行中のバックグラウンドタスクの結果を読む",
+  KillShell: "実行中のバックグラウンドタスクを停止",
+  SlashCommand: "インストール済みの slash コマンドを呼び出す",
 };
 
 const SKILL_LIBRARY = {

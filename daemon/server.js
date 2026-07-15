@@ -184,7 +184,7 @@ function buildWorkflowFromSteps(name, steps) {
   const nodes = [], edges = [];
   let i = 1, y = 40; const x = 80;
   const push = (type, text) => { const id = "n" + (i++); nodes.push({ id, type, text: String(text).slice(0, 300), x, y }); y += 150; return id; };
-  let prev = push("trigger", "เมื่อสั่งให้เริ่ม");
+  let prev = push("trigger", "開始の指示があったとき");
   clean.forEach((s) => { const id = push("action", s); edges.push({ from: prev, to: id }); prev = id; });
   return { name: String(name || "Workflow").slice(0, 60), nodes, edges };
 }
@@ -213,14 +213,14 @@ function harvestWorkflows(text) {
 }
 
 const WORKFLOW_ANALYZE_PROMPT = [
-  "ผู้ใช้วาง workflow เป็นภาษามนุษย์ (ลำดับ node) ด้านล่าง. ในฐานะ Director ให้วิเคราะห์",
-  "ว่าจะทำให้เกิดจริงได้ยังไง — อย่าลงมือทำตอนนี้ แค่วางแผน. ตอบเป็นหัวข้อ กระชับ",
-  "อ่านง่าย ภาษาเดียวกับผู้ใช้:",
-  "1) สรุป 1-2 บรรทัดว่า workflow นี้ทำอะไร",
-  "2) แต่ละขั้นต้องใช้ skill/tool ไหน (เช่น WebSearch, Bash, Write) — ถ้ายังไม่มี skill ที่เหมาะ บอกว่าควรสร้าง skill ชื่ออะไร ทำอะไร",
-  "3) ต้องเปิด permission/tool อะไรเพิ่มให้ agent ไหม",
-  "4) ควรมอบหมายให้ agent คนไหน หรือควรจ้าง agent ใหม่ (หน้าที่อะไร)",
-  "5) คำถาม/ช่องโหว่ที่ผู้ใช้ต้องตัดสินใจก่อนรันจริง",
+  "ユーザーが下に workflow を人間の言葉（node の順序）で置きました。Director として、",
+  "これをどう実現するかを分析してください — 今は着手せず、計画だけ立てます。項目立てで簡潔に、",
+  "読みやすく、ユーザーと同じ言語で答えてください：",
+  "1) この workflow が何をするものか 1〜2 行で要約",
+  "2) 各ステップにどの skill/tool が必要か（例：WebSearch, Bash, Write）— 適した skill がまだ無ければ、どんな名前で何をする skill を作るべきか示す",
+  "3) agent にどの permission/tool を追加で開放する必要があるか",
+  "4) どの agent に任せるべきか、または新しい agent を雇うべきか（役割は何か）",
+  "5) 実際に実行する前にユーザーが判断すべき疑問点・抜け漏れ",
 ].join("\n");
 
 // Which program features the MAIN keys currently unlock — booleans only,
@@ -299,19 +299,19 @@ function triggerRestart() {
 function personaText(a) {
   let p = a.prompt || "";
   const px = a.persona || {};
-  if (px.expertise) p += `\n\nความเชี่ยวชาญ/ขอบเขตงาน:\n${px.expertise}`;
-  if (px.personality) p += `\n\nบุคลิกและน้ำเสียง:\n${px.personality}`;
-  if (px.language) p += `\n\nภาษาหลักที่ใช้ตอบ: ${px.language}`;
-  if (px.rules) p += `\n\nกฎการทำงาน (ต้องเคารพเสมอ):\n${px.rules}`;
+  if (px.expertise) p += `\n\n専門分野 / 業務範囲：\n${px.expertise}`;
+  if (px.personality) p += `\n\n性格と口調：\n${px.personality}`;
+  if (px.language) p += `\n\n回答に使う主な言語：${px.language}`;
+  if (px.rules) p += `\n\n業務ルール（常に厳守すること）：\n${px.rules}`;
   // The assigned voice fixes the agent's gender (♀/♂ on the preset) — state it so
   // the agent refers to itself consistently in any language (Thai ครับ/ผม vs ค่ะ/ฉัน,
   // pronouns, honorifics) and never contradicts the voice the CEO actually hears.
   if (a.voice && VOICE_PRESETS[a.voice]) {
     p += voiceGender(a.voice) === "m"
-      ? "\n\nเพศของคุณ: ผู้ชาย — อ้างถึงตัวเองและพูดแบบผู้ชายเสมอในทุกภาษาที่ตอบ " +
-        "(ภาษาไทยใช้ ครับ/ผม) ให้ตรงกับเสียงพูดของคุณ ห้ามพูดแบบผู้หญิง"
-      : "\n\nเพศของคุณ: ผู้หญิง — อ้างถึงตัวเองและพูดแบบผู้หญิงเสมอในทุกภาษาที่ตอบ " +
-        "(ภาษาไทยใช้ ค่ะ/ฉัน/ดิฉัน) ให้ตรงกับเสียงพูดของคุณ ห้ามพูดแบบผู้ชาย";
+      ? "\n\nあなたの性別：男性 — 回答するどの言語でも常に男性として自分を呼び、男性らしく話すこと " +
+        "(日本語では男性的な一人称・話し方を使う) あなたの声に合わせ、女性のような話し方はしないこと"
+      : "\n\nあなたの性別：女性 — 回答するどの言語でも常に女性として自分を呼び、女性らしく話すこと " +
+        "(日本語では女性的な一人称・話し方を使う) あなたの声に合わせ、男性のような話し方はしないこと";
   }
   return p;
 }
@@ -837,7 +837,7 @@ function memAppend(agent, facts) {
     .map((f) => String(f).replace(/\s+/g, " ").trim().slice(0, 200))
     .filter((f) => f && !cur.includes(f));
   if (!fresh.length) return;
-  if (!cur) cur = `# ความจำของ ${agent}\n\n`;
+  if (!cur) cur = `# ${agent}のメモリ\n\n`;
   fs.appendFileSync(file, fresh.map((f) => `- ${f}`).join("\n") + "\n");
   // Keep the retrieval index in step with the new facts (no-op until P1 init).
   try { if (retrievalOk) { retrieval.reindexFile("mem", path.basename(file, ".md"), file); retrieval.persist(); } } catch {}
@@ -918,11 +918,11 @@ function cleanForQuery(text) {
 function memoryNote(agent, taskText, projId) {
   const memRef = path.basename(memFile(agent), ".md");
   const header = `\n<office-memory>\n` +
-    `ข้อมูลกลางออฟฟิศ: workspace/OFFICE.md (เปิดอ่านเฉพาะเมื่อเกี่ยวกับงาน)\n` +
-    `สมุดความจำถาวรของคุณ: workspace/memory/${memRef}.md ` +
-    `— พบข้อเท็จจริงสำคัญเกี่ยวกับเจ้าของ/งานที่ควรจำข้ามบทสนทนา ให้เติมบรรทัด "- ..." สั้นๆ เอง\n` +
-    (projId ? `ความจำของโปรเจคนี้: ${projMemFile(projId).replace(WORKSPACE + path.sep, "")}\n` : "") +
-    `ค้นความจำเก่าทั้งหมดได้ที่ GET /recall?q=<คำค้น> (skill: archive-search)\n`;
+    `オフィスの共有情報：workspace/OFFICE.md（業務に関係するときだけ開いて読む）\n` +
+    `あなたの永続メモリ帳：workspace/memory/${memRef}.md ` +
+    `— 会話をまたいで覚えておくべきオーナー/業務に関する重要な事実を見つけたら、自分で短く "- ..." の行を追記すること\n` +
+    (projId ? `このプロジェクトのメモリ：${projMemFile(projId).replace(WORKSPACE + path.sep, "")}\n` : "") +
+    `過去のメモリはすべて GET /recall?q=<検索語> で検索できる（skill: archive-search）\n`;
   let recall = "";
   const q = cleanForQuery(taskText);
   if (retrievalOk && reg.retrieval !== false && q) {
@@ -937,12 +937,12 @@ function memoryNote(agent, taskText, projId) {
         if (used + t.length > 1500) break;
         lines.push(`- ${t}`); used += t.length;
       }
-      if (lines.length) recall = `ความจำที่เกี่ยวกับงานนี้:\n${lines.join("\n")}\n`;
+      if (lines.length) recall = `この業務に関係するメモリ：\n${lines.join("\n")}\n`;
     } catch { /* fall through to the tail */ }
   }
   if (!recall) {
     const tail = memTail(agent, 8);
-    if (tail.length) recall = `ความจำล่าสุดของคุณ:\n${tail.join("\n")}\n`;
+    if (tail.length) recall = `あなたの最新のメモリ：\n${tail.join("\n")}\n`;
   }
   return header + recall + `</office-memory>\n`;
 }
@@ -1028,8 +1028,8 @@ let writingNotesMd = false;
 function saveNotes() {
   fs.writeFileSync(NOTES, JSON.stringify(notes, null, 2));
   writingNotesMd = true;
-  const md = "# Office Notes — กระดานโน้ตกลาง\n" +
-    "(agents: อ่านได้ และเพิ่มบรรทัด \"- ข้อความ\" เพื่อฝากโน้ตถึง CEO ได้เลย)\n\n" +
+  const md = "# Office Notes — 共有メモボード\n" +
+    "(agents: 読み取り可能。\"- メッセージ\" の行を追記すれば CEO へメモを残せます)\n\n" +
     notes.map((n) => `- ${n.text}`).join("\n") + "\n";
   fs.writeFileSync(NOTES_MD, md);
   setTimeout(() => { writingNotesMd = false; }, 1500);
@@ -1242,11 +1242,11 @@ function createProject(name, place, pathArg) {
     return String(s).replace(/\/+$/, "").toLowerCase();
   };
   if (projects.some((x) => norm(x.dir) === norm(dir)))
-    throw new Error("โปรเจคนี้อยู่ในรายการแล้ว (path ซ้ำ)");
+    throw new Error("このプロジェクトはすでにリストにあります（path が重複）");
   if (projects.some((x) => x.name.toLowerCase() === name.toLowerCase()))
-    throw new Error("มีโปรเจคชื่อนี้อยู่แล้ว — ห้ามลงทะเบียนซ้ำ");
+    throw new Error("この名前のプロジェクトはすでに存在します — 重複登録はできません");
   if (Object.values(reg.places).some((f) => norm(f) === norm(dir)))
-    throw new Error("path นี้คือโฟลเดอร์ของ place — โปรเจคต้องเป็นโฟลเดอร์ย่อยข้างใน");
+    throw new Error("この path は place のフォルダです — プロジェクトはその中のサブフォルダである必要があります");
   const existed = fs.existsSync(dir);
   fs.mkdirSync(dir, { recursive: true });
   ensureTrusted(dir);
@@ -1310,36 +1310,36 @@ function projectNote() {
   if (!projects.length && !Object.keys(reg.places).length &&
       !Object.keys(reg.apiKeys || {}).length && !featuresMap().image) return "";
   const keysLine = Object.keys(reg.apiKeys || {}).length
-    ? `\nAPI keys ที่ตั้งค่าไว้ใน env ของคุณแล้ว (เรียกใช้ได้ทันที): ${Object.keys(reg.apiKeys).join(", ")}`
+    ? `\nあなたの env に設定済みの API keys（すぐに使えます）：${Object.keys(reg.apiKeys).join(", ")}`
     : "";
   const sysTools = featuresMap().image ? `
-เครื่องมือกลางของออฟฟิศ (เรียกผ่าน Bash ได้เลย):
-- 🖼 สร้างภาพ AI: curl -s -X POST http://127.0.0.1:8787/gen/image -H "content-type: application/json" -d "{\\"prompt\\":\\"<english prompt>\\"}"
-  → ได้ {"path": "..."} — ใส่ path นั้นในคำตอบ แชทของเจ้าของจะแสดงรูปอัตโนมัติ` : "";
+オフィスの共通ツール（Bash から直接呼べます）：
+- 🖼 AI画像を生成: curl -s -X POST http://127.0.0.1:8787/gen/image -H "content-type: application/json" -d "{\\"prompt\\":\\"<english prompt>\\"}"
+  → {"path": "..."} が返る — その path を回答に入れれば、オーナーのチャットが自動で画像を表示します` : "";
   // Cap to the 12 most-recent projects so the note stays bounded as they pile up
   // (the full list is always one GET /registry away).
   const recent = projects.slice(-12);
-  const more = projects.length > recent.length ? `\n(…อีก ${projects.length - recent.length} โปรเจค — ดูทั้งหมดที่ GET /registry)` : "";
-  const list = (recent.map((p) => `- ${p.name} → ${p.dir}`).join("\n") || "(ยังไม่มี)") + more;
+  const more = projects.length > recent.length ? `\n(…他に ${projects.length - recent.length} 件のプロジェクト — 全部は GET /registry で見られます)` : "";
+  const list = (recent.map((p) => `- ${p.name} → ${p.dir}`).join("\n") || "(まだありません)") + more;
   const places = Object.entries(reg.places)
-    .map(([n, f]) => `- "${n}" → ${f}`).join("\n") || "(ไม่มี)";
+    .map(([n, f]) => `- "${n}" → ${f}`).join("\n") || "(なし)";
   return `
 
 <office-projects>
-โปรเจคที่ลงทะเบียนในออฟฟิศ:
+オフィスに登録されているプロジェクト：
 ${list}
-สถานที่เก็บโปรเจค (ชื่อย่อ):
+プロジェクトの保管場所（略称）：
 ${places}
-เมื่อผู้ใช้อ้างถึงโปรเจคเหล่านี้ ให้ทำงานกับไฟล์ใน path ของมันโดยตรงทันที —
-คุณมีอำนาจตัดสินใจเต็มที่ในงานที่ได้รับมอบ ทำเสร็จแล้วต้องสรุปผลให้ผู้สั่งงานชัดเจน.
-สำคัญ: เช็ครายการข้างบนก่อนเสมอ — โปรเจคที่มีอยู่แล้ว "ห้ามลงทะเบียนซ้ำ" และห้ามใช้
-โฟลเดอร์ของ place เป็น path โปรเจคโดยตรง (ระบบจะปฏิเสธ).
-ห้ามเด็ดขาด: ลบ/ถอดโปรเจคออกจากรายการ (API remove/removeDisk) เว้นแต่ผู้ใช้สั่งเองชัดๆ.
-การทดสอบใดๆ (เช่น เว็บ) ให้ใช้วิธีเบื้องหลังก่อนเสมอ (curl / headless / สคริปต์)
-อย่าเปิดหน้าต่างรบกวนผู้ใช้; ถ้าจำเป็นต้องเปิดจริงๆ จนไม่มีทางอื่น ให้รันคำสั่งเปิดตรงๆ
-แล้วระบบ Security จะขอ allow จากผู้ใช้ให้เอง.
-กฎเหล็ก: server/process ทุกตัวที่คุณเปิดเพื่อทดสอบ (dev server, next start, ฯลฯ)
-ต้องปิดให้หมดก่อนจบงาน — ห้ามทิ้งโปรเซสค้างไว้ในเครื่องผู้ใช้เด็ดขาด.${keysLine}${sysTools}${
+ユーザーがこれらのプロジェクトに言及したら、その path 内のファイルを直接すぐに扱うこと —
+任された業務についてあなたは全面的な決定権を持ちます。完了したら指示者に結果を明確に報告すること。
+重要：必ず先に上のリストを確認すること — すでに存在するプロジェクトは「重複登録禁止」、そして
+place のフォルダをそのままプロジェクトの path に使ってはいけません（システムが拒否します）。
+厳禁：リストからプロジェクトを削除/除外する（API remove/removeDisk）こと。ユーザーが明確に指示した場合を除く。
+あらゆるテスト（例：ウェブ）は必ずまずバックグラウンドの方法で行うこと（curl / headless / スクリプト）。
+ユーザーの邪魔になるウィンドウを開かないこと。どうしても他に方法がなく開く必要があるなら、開くコマンドを直接実行すれば、
+Security システムがユーザーに allow を求めます。
+鉄則：テストのために起動したすべての server/process（dev server, next start など）は、
+業務を終える前にすべて閉じること — ユーザーの端末にプロセスを残したままにするのは絶対に禁止。${keysLine}${sysTools}${
   (typeof plugins !== "undefined" && plugins.agentNote()) || ""}
 </office-projects>`;
 }
@@ -1374,7 +1374,7 @@ function dispatchJob(job) {
   const oneShot = job.mode === "now" || (job.mode === "at" && !job.daily);
   runClaude(job.agent, job.prompt, {
     session: job.sessionKey || "new",
-    logPrompt: "📋 [งานที่สั่งไว้] " + job.prompt,
+    logPrompt: "📋 [予約された業務] " + job.prompt,
     onEntry: (key) => { job.sessionKey = key; saveJobs(); },
     onDone: () => {
       agentBusy.delete(job.agent);
@@ -1412,23 +1412,23 @@ function heartbeat() {
   lastHeartbeat = Date.now();
   const upcoming = cal.filter((c) => c.at > Date.now() && c.at < Date.now() + 12 * 3600000)
     .sort((a, b) => a.at - b.at).slice(0, 6)
-    .map((c) => `- ${c.title} @ ${new Date(c.at).toLocaleString("th-TH")}`).join("\n") || "(ว่าง)";
+    .map((c) => `- ${c.title} @ ${new Date(c.at).toLocaleString("ja-JP")}`).join("\n") || "(なし)";
   const standing = jobs.filter((j) => !j.done && j.enabled !== false).slice(0, 8)
-    .map((j) => `- [${j.mode}] ${j.agent}: ${j.prompt.slice(0, 60)}`).join("\n") || "(ไม่มี)";
-  const board = notes.slice(-8).map((n) => `- ${n.text}`).join("\n") || "(ว่าง)";
+    .map((j) => `- [${j.mode}] ${j.agent}: ${j.prompt.slice(0, 60)}`).join("\n") || "(なし)";
+  const board = notes.slice(-8).map((n) => `- ${n.text}`).join("\n") || "(なし)";
   // Nothing the Director reports on (calendar / jobs / notes) has changed since
   // his last pass → he'd just say "OK" again. Skip the spawn entirely.
   const sig = `${upcoming}${standing}${board}`;
   if (sig === lastHbSig) return;
   lastHbSig = sig;
   runClaude("main",
-    `รอบตรวจความเรียบร้อยของ Director (ตอนนี้ ${new Date().toLocaleString("th-TH")}):\n\n` +
-    `นัดหมาย 12 ชม.ข้างหน้า:\n${upcoming}\n\nงานที่สั่งค้างไว้:\n${standing}\n\n` +
-    `กระดานโน้ต:\n${board}\n\n` +
-    `ถ้ามีสิ่งที่ CEO ควรรู้ตอนนี้ (นัดใกล้ถึง งานสะดุด โน้ตที่ควรเห็น) ` +
-    `ให้เขียนข้อความแจ้งสั้นๆ อ่านง่าย. ถ้าทุกอย่างเรียบร้อยและไม่มีอะไรต้องรบกวน ` +
-    `ให้ตอบคำเดียวว่า OK`,
-    { noSub: true, logPrompt: "💓 รอบตรวจความเรียบร้อย",
+    `Director の点検ラウンド（現在 ${new Date().toLocaleString("ja-JP")}）：\n\n` +
+    `今後12時間の予定：\n${upcoming}\n\n残っている予約業務：\n${standing}\n\n` +
+    `メモボード：\n${board}\n\n` +
+    `いま CEO が知っておくべきことがあれば（近づいている予定、つまずいている業務、見ておくべきメモ）、` +
+    `短く読みやすい通知メッセージを書いてください。すべて問題なく、邪魔する必要がなければ、` +
+    `OK の一言だけで返してください`,
+    { noSub: true, logPrompt: "💓 点検ラウンド",
       filterText: (t) => (/^\s*OK\.?\s*$/i.test(t) ? "" : t) });
 }
 
@@ -1443,7 +1443,7 @@ function resumePausedTick(now) {
     if (w.tries >= RESUME_MAX_TRIES) {
       pauseClear(w.key);
       broadcast({ type: "chat.message", agent: w.agent || "main",
-        text: "⏹ พยายามทำงานต่อหลายครั้งแล้วยังติดลิมิตอยู่ — ขอพักงานนี้ไว้ก่อนนะครับ (สั่งใหม่ได้ทุกเมื่อ)" });
+        text: "⏹ 何度か再開を試みましたが、まだ一時的な上限に引っかかっています。この作業は一旦お休みしますね（いつでも再指示できます）" });
       continue;
     }
     // Backoff: 5, 10, 20, 40 min between attempts (ts=0 on a restart ⇒ try right away).
@@ -1452,12 +1452,12 @@ function resumePausedTick(now) {
     if (agentRunning(w.agent)) continue;   // don't pile onto an agent already busy
     w.tries++; w.state = "active"; w.ts = now; savePaused();
     broadcast({ type: "chat.message", agent: w.agent,
-      text: "▶ โควต้าน่าจะคืนแล้ว — ขอทำงานที่ค้างไว้ต่อจากเดิมนะครับ" });
+      text: "▶ 上限が回復したようなので、中断していた作業を続けますね" });
     runClaude(w.agent,
-      "ทำงานต่อจากที่ค้างไว้ก่อนหน้า (ก่อนหน้านี้สะดุดเพราะติดลิมิตชั่วคราว/โปรแกรมรีสตาร์ท). " +
-      "ดูบริบทในเธรดนี้แล้วทำงานที่ยังไม่เสร็จให้จบ:\n\n" + String(w.prompt || ""),
+      "前回の続きから作業してください（一時的な上限やプログラム再起動で中断しました）。" +
+      "このスレッドの文脈を確認し、未完了の作業を最後まで仕上げてください:\n\n" + String(w.prompt || ""),
       { session: w.key, project: w.project, resumable: true, _tries: w.tries,
-        resumePrompt: w.prompt, logPrompt: "▶ ทำงานต่อ (resume)" });
+        resumePrompt: w.prompt, logPrompt: "▶ 作業を続ける (resume)" });
   }
 }
 
@@ -1476,10 +1476,10 @@ setInterval(() => {
       saveCal();
       broadcast({ type: "reminder", agent: "main", text: c.title, at: c.at });
       runClaude("main",
-        `แจ้งเตือนนัดหมายให้ CEO เดี๋ยวนี้: "${c.title}" เวลา ` +
-        `${new Date(c.at).toLocaleString("th-TH")} (อีกประมาณ ${Math.max(1, Math.round((c.at - now) / 60000))} นาที). ` +
-        `เขียนข้อความเตือนสั้นๆ เป็นกันเอง 1-2 ประโยค`,
-        { noSub: true, logPrompt: `🔔 เตือนนัด: ${c.title}` });
+        `今すぐ CEO に予定を通知してください："${c.title}" 時刻は ` +
+        `${new Date(c.at).toLocaleString("ja-JP")}（あと約 ${Math.max(1, Math.round((c.at - now) / 60000))} 分）。` +
+        `短くて親しみのあるリマインドメッセージを1〜2文で書いてください`,
+        { noSub: true, logPrompt: `🔔 予定リマインド: ${c.title}` });
     }
   }
   const hb = Number(reg.heartbeatMin || 0);
@@ -1505,13 +1505,13 @@ sweepProjects();
 const SUB_NOTE = `
 
 <system-capability>
-ออฟฟิศนี้แตกร่างเป็น sub-agent ทำงานขนานกันได้ — แต่ใช้ "เฉพาะตอนที่งานมีส่วนอิสระตั้งแต่ 2 ส่วนขึ้นไป
-ที่ทำพร้อมกันได้จริงและคุ้มค่า" เท่านั้น (เช่น ค้นหลายหัวข้อ/หลายแหล่งพร้อมกัน · ตรวจหลายไฟล์ที่ไม่เกี่ยวกัน ·
-เทียบหลายตัวเลือกอิสระ). งานทั่วไป งานเล็ก หรืองานที่ทำต่อเนื่องเป็นลำดับ — ทำเองตรงๆ จะประหยัดและไม่ช้ากว่า.
-ค่าเริ่มต้นคือ "ทำเอง"; แตกร่างก็ต่อเมื่อชัดเจนว่าขนานได้จริงและช่วยให้เร็วขึ้นจริง อย่าแตกร่างพร่ำเพรื่อ.
-ถ้าจะแตก จบคำตอบด้วยบรรทัดนี้ หนึ่งบรรทัดต่อหนึ่งงานย่อย (ไม่เกิน 3-4 บรรทัด):
-SUB: <งานย่อยที่ชัดเจนครบถ้วนในตัวเอง พร้อมบริบทที่จำเป็นทั้งหมด>
-ระบบจะส่งร่างโคลนไปทำขนานกัน แล้วรวมผลกลับมาให้คุณสรุปเป็นคำตอบสุดท้าย.
+このオフィスは sub-agent に分身して並行作業できます — ただし「業務に独立した部分が2つ以上あり、
+実際に同時進行できて割に合うとき」だけに使うこと（例：複数のトピック/複数の情報源を同時に調査 · 無関係な複数ファイルを点検 ·
+独立した複数の選択肢を比較）。一般的な業務、小さな業務、順番に連続して進める業務は — 自分で直接やる方が節約になり、遅くもなりません。
+デフォルトは「自分でやる」。分身は本当に並行でき、実際に速くなると明確なときだけ。むやみに分身しないこと。
+分身するなら、回答の最後をこの行で締めること。サブ業務1つにつき1行（3〜4行まで）：
+SUB: <それ単体で完結する明確なサブ業務。必要な文脈をすべて含めること>
+システムがクローンを並行で走らせ、結果をまとめて返すので、あなたが最終回答として要約してください。
 </system-capability>`;
 
 function runClaude(agent, prompt, opts = {}) {
@@ -1639,8 +1639,8 @@ function runClaude(agent, prompt, opts = {}) {
       const sk = reg.skills[sid];
       if (sk) preamble += `\n<skill name="${sk.name}">\n${sk.content}\n</skill>\n`;
     }
-    preamble += `\nกระดานโน้ตกลางของออฟฟิศ: ไฟล์ notes.md ใน workspace — ` +
-      `อ่านได้ และเพิ่มบรรทัด "- ข้อความ" เพื่อฝากโน้ตถึง CEO ได้\n`;
+    preamble += `\nオフィスの共有メモボード：workspace 内の notes.md ファイル — ` +
+      `読み取り可能。"- メッセージ" の行を追記すれば CEO へメモを残せます\n`;
     preamble += memoryNote(agent, String(opts.logPrompt || prompt), projId);
     preamble += "</persona>\n\n";
   }
@@ -1719,11 +1719,11 @@ function runClaude(agent, prompt, opts = {}) {
   const VOICE_NOTE = canSpeak ? `
 
 <voice-capability>
-คุณมีเสียงพูดจริงในออฟฟิศ — ใช้เพิ่มสีสันได้. เมื่อมีบรรทัดสั้นๆ ที่ "พูดออกมาแล้วน่ารัก/
-เป็นธรรมชาติ" (ทักทาย, ยืนยันสั้นๆ, ประกาศงานเสร็จ, สรุปหนึ่งประโยค) ให้จบคำตอบด้วยบรรทัด:
-SPEAK: <ประโยคพูดสั้นๆ 1 ประโยค เป็นธรรมชาติ ภาษาเดียวกับเจ้าของ>
-ทำได้บ่อยพอประมาณให้ออฟฟิศมีชีวิต แต่ "พูดสั้นเสมอ" — อย่าอ่านทั้งข้อความ.
-ข้อยกเว้นเดียว: ถ้าเจ้าของสั่งให้อ่าน/รายงานด้วยเสียงแบบเต็มๆ ค่อยใส่เนื้อหายาวใน SPEAK ได้.
+あなたはオフィスで本物の音声を持っています — 彩りを添えるのに使えます。「声に出すと可愛い/
+自然な」短い一言があるとき（あいさつ、短い確認、業務完了の告知、一文の要約）は、回答をこの行で締めてください：
+SPEAK: <自然で短い1文。オーナーと同じ言語で>
+オフィスに活気が出る程度にほどよく使ってください。ただし「常に短く」— 全文を読み上げないこと。
+唯一の例外：オーナーが音声でフルに読み上げ/報告するよう指示した場合のみ、SPEAK に長い内容を入れてよいです。
 </voice-capability>` : "";
   // 🖼 Make agent-shared media show inline. The chat auto-renders any absolute
   // media path — ANYWHERE on disk, not just under the workspace — as an image/
@@ -1732,10 +1732,10 @@ SPEAK: <ประโยคพูดสั้นๆ 1 ประโยค เป�
   const MEDIA_NOTE = `
 
 <media-capability>
-ให้เจ้าของเห็น/ดู/ฟัง รูป-วิดีโอ-เสียง: พิมพ์ path เต็มของไฟล์ในบรรทัดของมันเอง
-ออฟฟิศจะ render เป็นรูป/เครื่องเล่นในแชทเองทันที — ไฟล์อยู่ที่ไหนก็ได้บนเครื่อง
-(ในโปรเจค, workspace, Desktop, Downloads, ไดรฟ์อื่น…) ไม่ต้องก็อปเข้ามาก่อน.
-อย่าบอกแค่ที่อยู่ไฟล์ หรือแปะลิงก์ดาวน์โหลด.
+オーナーに画像・動画・音声を見せる/見てもらう/聞いてもらうには：ファイルのフルパスをそれ自体の行に書いてください。
+オフィスがすぐにチャット内で画像/プレイヤーとして render します — ファイルは端末上のどこにあってもかまいません
+（プロジェクト内、workspace、Desktop、Downloads、他のドライブ…）。事前にコピーしてくる必要はありません。
+ファイルの場所を伝えるだけ、あるいはダウンロードリンクを貼るだけ、にしないこと。
 </media-capability>`;
   // Ghost sub-agents don't talk to the owner or share media directly (the parent
   // synthesizes their output) — skip the media note for them to save tokens.
@@ -1747,13 +1747,13 @@ SPEAK: <ประโยคพูดสั้นๆ 1 ประโยค เป�
   const TOOLS_NOTE = agent.includes("#") ? "" : `
 
 <use-your-tools>
-ออฟฟิศให้เครื่องมือจริงกับคุณ — เอามาใช้ทำงานให้ "เห็นผลจริง" ไม่ใช่แค่บอกว่าทำได้:
-• ค่าเริ่มต้น = ทำงานเบื้องหลังเงียบๆ ไม่เปิดหน้าต่างรกจอเจ้าของโดยไม่จำเป็น.
-• เมื่อการ "ให้ดูสดๆ" ช่วยให้เข้าใจ/มั่นใจขึ้น หรือเจ้าของขอดู → โชว์เลย: ถ้าคุณมี tool 'web'
-  ให้เปิดเบราว์เซอร์แบบเห็นหน้าจอ ('web' ไม่ใช่ 'web-bg') แล้วเดินให้ดูทีละขั้น; หรือสร้าง
-  ชิ้นงานจริง (รูป/วิดีโอ/เอกสาร/สไลด์/ไดอะแกรม) แล้วส่ง path มาให้ render ในแชท.
-• ทำเว็บ/แอป/สคริปต์แล้วต้องพิสูจน์ว่าใช้งานได้: รันจริงแล้วแคปหรือเปิดให้เจ้าของดู — อย่าเดา.
-• เลือกให้พอดี: เห็นภาพเมื่อมีคุณค่า, เงียบเมื่อไม่จำเป็น. มีทักษะ/ปลั๊กอินอะไรก็หยิบมาใช้จริง.
+オフィスはあなたに本物のツールを渡しています — それを使って「実際に結果を出す」こと。できると言うだけで終わらせないこと：
+• デフォルト = バックグラウンドで静かに作業し、必要もないのにオーナーの画面を散らかすウィンドウを開かない。
+• 「その場で見せる」ことが理解/安心につながるとき、またはオーナーが見たがるとき → すぐ見せること：tool 'web' があれば、
+  画面が見えるブラウザを開き（'web-bg' ではなく 'web'）、一手ずつ実演すること。または実際の
+  成果物（画像/動画/文書/スライド/ダイアグラム）を作り、その path を送ってチャットで render すること。
+• ウェブ/アプリ/スクリプトを作ったら動くことを証明すること：実際に動かしてキャプチャするか、オーナーに開いて見せること — 憶測で済ませない。
+• ちょうどよく選ぶこと：価値があるときは見せ、必要ないときは静かに。持っている skill/plugin は何でも実際に使うこと。
 </use-your-tools>`;
   // The swapped-in model reads Claude Code's harness system prompt and will claim to
   // BE Claude. Tell it its real backend so "what model are you?" answers truthfully.
@@ -1797,7 +1797,7 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
       else if (isRateLimit(`${text || ""}\n${errText}\n${lastText}`)) {
         pausePause(agent, opts.resumePrompt || prompt, projId, entry.key);
         broadcast({ type: "chat.message", agent, task,
-          text: "⏸ ติดลิมิต (rate/usage) ชั่วคราว — พักงานไว้ก่อน เดี๋ยวจะทำต่อให้อัตโนมัติเมื่อโควต้าคืน" });
+          text: "⏸ 一時的に上限（rate/usage）に達しました — いったん業務を止めます。クォータが戻り次第、自動で続きを進めます" });
       } else pauseClear(entry.key);
     }
     if (opts.onDone) try { opts.onDone(text, ok); } catch (e) { console.error("[onDone]", e); }
@@ -1837,7 +1837,7 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
     const an = (reg.agents[agent] || {}).name || agent;
     const toTag = fb.model ? fb.provider + "/" + fb.model : fb.provider;
     broadcast({ type: "chat.message", agent, task, session: entry.key, model: mtag,
-      text: `🛟 สมองของ ${an} (${mtag}) โดน overload ต่อเนื่อง — สลับไปสมองสำรอง ${toTag} ให้ชั่วคราว แล้วทำงานเดิมต่อ (ปรับได้ในการตั้งค่า)` });
+      text: `🛟 ${an} の brain（${mtag}）が連続して overload しています — 一時的に予備 brain の ${toTag} に切り替えて、同じ業務を続けます（設定で変更できます）` });
     // Re-run the SAME task on the fallback brain. Fresh thread (the down brain can't be
     // summarized through); onDone rides along so a delegation still reports back normally.
     runClaude(agent, prompt, { ...opts, session: "new", _brainOverride: fb, _failedOver: true });
@@ -1869,13 +1869,13 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
           const dead = (st === null || st === undefined) && apiRetries >= 2;  // endpoint not responding
           if (permanent || dead) {
             brainDead = true;
-            const why = st === 401 ? "API key ผิด/หมดอายุ (401)"
-              : st === 403 ? "ไม่ได้รับอนุญาต (403)"
-              : "endpoint ไม่ตอบ (น่าจะ down หรือไม่น่าจะกลับมา)";
+            const why = st === 401 ? "API key が不正/期限切れ (401)"
+              : st === 403 ? "許可されていません (403)"
+              : "endpoint が応答しません（down しているか、戻る見込みが薄い）";
             const an = (reg.agents[agent] || {}).name || agent;
             broadcast({ type: "chat.message", agent, task, session: entry.key, model: mtag,
-              text: `⚠️ สมองของ ${an} (${mtag}) ใช้งานไม่ได้ — ${why}.\n` +
-                `ตรวจ key/ตั้งค่าใน 🧠 BRAIN ของคุณคนนี้ (หรือเปลี่ยนสมอง) แล้วสั่งใหม่ — ไม่ต้องรอ retry ครบ 10 รอบ` });
+              text: `⚠️ ${an} の brain（${mtag}）が使えません — ${why}。\n` +
+                `この人の 🧠 BRAIN で key/設定を確認する（または brain を変更する）かして、再度指示してください — retry を10回まで待つ必要はありません` });
             try { killTree(child); } catch (e) { /* best-effort */ }
           } else {
             // 529/503 (transient overload): if the owner opted in to a fallback brain and
@@ -1934,7 +1934,7 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
               if (found.length) {
                 subTasks.push(...found);
                 raw = (kept.join("\n").trim() +
-                  `\n\n👻 แตกร่าง ${found.length} sub-agents:\n` +
+                  `\n\n👻 ${found.length} 体の sub-agents に分身：\n` +
                   found.map((t, i) => `${i + 1}. ${t.slice(0, 80)}`).join("\n")).trim();
               }
             }
@@ -1945,7 +1945,7 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
               const hw = harvestWorkflows(out);
               out = hw.text;
               if (hw.created.length)
-                out = (out + "\n\n🔀 บันทึก workflow ลง Builder แล้ว: " +
+                out = (out + "\n\n🔀 workflow を Builder に保存しました： " +
                   hw.created.map((w) => w.name).join(", ")).trim();
             }
             if (out && !opts._recovered && isOverflowError(out)) {
@@ -2022,9 +2022,9 @@ async function summarizeThread(oldEntry, agent) {
     if (!hist.trim()) return "";
     const a = reg.agents && reg.agents[agent];
     return await claudeText(
-      `สรุปบทสนทนาในออฟฟิศนี้ให้เพื่อนร่วมงานอ่านแล้วทำงานต่อได้ทันที: ข้อเท็จจริงสำคัญ ` +
-      `การตัดสินใจ งานที่ค้างอยู่ และสิ่งที่ต้องทำต่อ. ตอบเป็นภาษาเดียวกับบทสนทนา ` +
-      `กระชับ ≤200 คำ ไม่ต้องเกริ่นนำ.\n\n${hist}`,
+      `このオフィスの会話を、同僚が読んですぐ続きの業務に取りかかれるように要約してください：重要な事実、` +
+      `決定事項、残っている業務、そして次にやるべきこと。会話と同じ言語で答えてください。` +
+      `簡潔に、200語以内で、前置きは不要です。\n\n${hist}`,
       { provider: a && a.provider, model: a && a.model });
   } catch { return ""; }
 }
@@ -2032,7 +2032,7 @@ async function summarizeThread(oldEntry, agent) {
 function brainLabel(agent) {
   const a = (reg.agents && reg.agents[agent]) || {};
   return a.provider && a.provider !== "claude"
-    ? a.provider + (a.model ? "/" + a.model : "") : "โมเดลที่เลือก";
+    ? a.provider + (a.model ? "/" + a.model : "") : "選択したモデル";
 }
 
 // Restart a task on a FRESH thread seeded with a Claude-made summary of the old one,
@@ -2068,15 +2068,15 @@ async function restartOnFreshThread(agent, prompt, opts, oldEntry, notice, flag)
 // user's task runs without ever hitting the limit. Claude-Code-style, for any model.
 function compactThenRun(agent, prompt, opts, oldEntry) {
   return restartOnFreshThread(agent, prompt, opts, oldEntry,
-    `🧠 บทสนทนายาวขึ้น — สรุปใจความเดิม (auto-compact) แล้วทำงานต่อใน thread ใหม่นี้ ` +
-    `เพื่อให้ ${brainLabel(agent)} ไหว`, "_compacted");
+    `🧠 会話が長くなってきました — これまでの要点を要約し（auto-compact）、この新しい thread で続けます。` +
+    `${brainLabel(agent)} が処理しきれるように`, "_compacted");
 }
 
 // REACTIVE recovery (see maybeRecover): the backend already rejected the request as
 // too big (overflow or rate/TPM). Same summarize → fresh-thread restart, one attempt.
 function autoRecoverOverflow(agent, prompt, opts, oldEntry) {
   return restartOnFreshThread(agent, prompt, opts, oldEntry,
-    `⚠ ${brainLabel(agent)} รับ context เต็มไม่ไหว — สรุปใจความเดิมแล้วย้ายมาทำงานต่อใน thread ใหม่นี้ให้อัตโนมัติ`,
+    `⚠ ${brainLabel(agent)} が context をこれ以上受け切れません — これまでの要点を要約し、この新しい thread に自動で移して続けます`,
     "_recovered");
 }
 
@@ -2108,9 +2108,9 @@ function teamList() {
 // in his own pane works exactly like an order through the CEO.
 function directorNote() {
   const places = Object.entries(reg.places)
-    .map(([n, f]) => `  - "${n}" → ${f}`).join("\n") || "  (ยังไม่มี — ผู้ใช้ตั้งได้ใน 🗂)";
+    .map(([n, f]) => `  - "${n}" → ${f}`).join("\n") || "  (まだありません — ユーザーは 🗂 で設定できます)";
   const projList = projects.slice(-8)
-    .map((p) => `  - ${p.name} → ${p.dir}`).join("\n") || "  (ยังไม่มี)";
+    .map((p) => `  - ${p.name} → ${p.dir}`).join("\n") || "  (まだありません)";
   return `
 
 <system-capability>
@@ -2130,30 +2130,30 @@ One line per assignment — dispatched automatically; their result is reported
 back to you when they finish, so you can answer questions or follow up.
 IMPORTANT: prose like assigning work in words does NOTHING — only the
 DELEGATE line dispatches work.
-เฉพาะเมื่องานที่มอบมีส่วนอิสระหลายส่วนที่ทำขนานกันได้จริงและคุ้มค่า (เช่น ค้นคว้าหลายหัวข้อพร้อมกัน,
-ตรวจหลายไฟล์ที่ไม่เกี่ยวกัน) จึงค่อยสั่งผู้รับ "แตกร่าง" — งานทั่วไปให้ผู้รับทำตรงๆ จะประหยัดกว่า. ตัวอย่างกรณีที่ควรแตก:
-DELEGATE: <agent_id> :: ค้นคว้า A, B, C แบบขนาน — จบคำตอบด้วยบรรทัด SUB: ทีละหัวข้อ.
+任せる業務に、実際に並行できて割に合う独立した部分が複数あるとき（例：複数のトピックを同時に調査、
+無関係な複数ファイルを点検）だけ、受け手に「分身」を指示すること — 一般的な業務は受け手に直接やらせる方が節約になります。分身すべき例：
+DELEGATE: <agent_id> :: A, B, C を並行で調査 — 回答の最後を SUB: の行でトピックごとに締める。
 
-PROJECT SYSTEM — registered places (ชื่อย่อ → โฟลเดอร์):
+PROJECT SYSTEM — registered places（略称 → フォルダ）：
 ${places}
 Existing projects:
 ${projList}
-เมื่อผู้ใช้สั่งสร้างโปรเจคใหม่ (เช่น "สร้างโปรเจค test ที่ห้องสมุด") คุณต้องสร้างเอง
-ด้วยบรรทัด protocol นี้ (ระบบสร้าง+ลงทะเบียนให้ทันที):
-PROJECT: <ชื่อโปรเจค> @ <ชื่อ place หรือ full path>
-แล้วค่อยมอบงานแบบระบุโปรเจค: DELEGATE: <agent_id> @ <ชื่อโปรเจค> :: <งาน>
-สำคัญมาก: ห้ามสั่งให้สมาชิกไปสร้างโปรเจคเอง และห้ามทำงานของโปรเจคนอกบรรทัด DELEGATE @ —
-ไม่งั้นงานจะไม่ได้รันอยู่ "ข้างใน" โปรเจคจริงๆ (เจ้าของ resume session ต่อไม่ได้).
-ห้ามสร้างโปรเจคเองโดยผู้ใช้ไม่ได้สั่ง
+ユーザーが新しいプロジェクトの作成を指示したら（例：「図書室に test というプロジェクトを作って」）、あなた自身が
+この protocol の行で作成すること（システムが即座に作成＋登録します）：
+PROJECT: <プロジェクト名> @ <place 名 または full path>
+そのうえでプロジェクトを指定して業務を任せる：DELEGATE: <agent_id> @ <プロジェクト名> :: <業務>
+とても重要：メンバーに自分でプロジェクトを作らせてはいけません。また DELEGATE @ の行の外でプロジェクトの業務を行ってはいけません —
+そうしないと業務が本当にプロジェクトの「中」で走らなくなります（オーナーが resume session を続けられません）。
+ユーザーの指示なしに勝手にプロジェクトを作らないこと
 
-DEFINITION OF DONE — งานจะ "เสร็จ" ก็ต่อเมื่อผลของมัน "มีผลจริงในระบบที่รันอยู่" และคุณ
-verify แล้วเท่านั้น — ไม่ใช่แค่ "เขียนไฟล์เสร็จ". ก่อนรายงานเจ้าของว่าเสร็จ ให้ยืนยันว่าการ
-เปลี่ยนแปลงถูกนำไปใช้จริง (ของที่ build/แก้ในโปรเจคหรือ mirror ยังไม่มีผลจนกว่าจะถูก deploy ไป
-ที่ที่ระบบโหลดจริง + reload + เช็คว่าเวอร์ชัน/พฤติกรรมที่รันอยู่ตรงกับที่ทำ). โดยเฉพาะ plugin:
-มันรันจาก plugins/<id>/ เท่านั้น — ถ้าทีม build/แก้ที่อื่น ต้อง copy เข้า plugins/<id> (ห้ามทับ
-data/), reload, แล้วเช็ค GET /plugins ว่าขึ้นเวอร์ชันใหม่ + log ไม่มี load fail ก่อนถือว่าเสร็จ
-(ใช้ skill "Plugin Builder"). "สร้างเสร็จ" ≠ "กำลังรันอยู่". การ push ขึ้น git/Hub เป็นขั้นแยก
-ที่ต้องให้เจ้าของอนุมัติเสมอ ไม่ถือว่าเป็นส่วนของ "เสร็จ" โดยอัตโนมัติ
+DEFINITION OF DONE — 業務が「完了」と言えるのは、その結果が「実際に稼働中のシステムに反映されている」ことをあなたが
+verify したときだけです — 単に「ファイルを書き終えた」だけではありません。オーナーに完了と報告する前に、変更が
+実際に適用されたことを確認すること（プロジェクトや mirror で build/修正したものは、システムが実際にロードする場所へ deploy
+＋ reload ＋ 稼働中のバージョン/挙動が作ったものと一致するかチェックするまで反映されません）。特に plugin：
+それは plugins/<id>/ からのみ走ります — チームが別の場所で build/修正したなら、plugins/<id> に copy し（data/ は
+上書きしないこと）、reload し、GET /plugins で新しいバージョンに上がっていること＋log に load fail が無いことをチェックしてから完了とみなすこと
+（skill "Plugin Builder" を使う）。「作り終えた」≠「稼働している」。git/Hub への push は別の段階で、
+必ずオーナーの承認が要ります。自動的に「完了」の一部とはみなしません
 </system-capability>`;
 }
 
@@ -2221,11 +2221,11 @@ function makeDelegateFilter(depth, session, onHit) {
         try {
           const proj = reg.places[loc] ? createProject(nm, loc, "")
             : createProject(nm, "", loc);
-          keep.push(`📁 สร้างโปรเจค "${proj.name}" แล้ว → ${proj.dir}`);
+          keep.push(`📁 プロジェクト "${proj.name}" を作成しました → ${proj.dir}`);
         } catch (e) {
           // Already registered = fine (idempotent for routing); real errors show.
-          if (projectByName(nm)) keep.push(`📁 โปรเจค "${nm}" มีอยู่แล้ว — ใช้ตัวเดิม`);
-          else keep.push(`📁⚠️ สร้างโปรเจค "${nm}" ไม่สำเร็จ: ${e.message}`);
+          if (projectByName(nm)) keep.push(`📁 プロジェクト "${nm}" はすでに存在します — 既存のものを使います`);
+          else keep.push(`📁⚠️ プロジェクト "${nm}" の作成に失敗しました：${e.message}`);
         }
         continue;
       }
@@ -2261,8 +2261,8 @@ function makeDelegateFilter(depth, session, onHit) {
           // agent must NOT enter it — report back so the Director re-plans
           // (and the two never collide inside one working tree).
           if (proj && projWin[proj]) {
-            reportToMain(t, `โปรเจค "${projName || proj}" เจ้าของกำลังเปิดทำงานอยู่ — ` +
-              `เข้าไปทำตอนนี้ไม่ได้ รอจนเจ้าของปิดหน้าต่างก่อน`, false, depth, session);
+            reportToMain(t, `プロジェクト "${projName || proj}" はオーナーが開いて作業中です — ` +
+              `今は入れません。オーナーがウィンドウを閉じるまで待ってください`, false, depth, session);
             return;
           }
           const tl = sess[t] || [];
@@ -2306,7 +2306,7 @@ function verifyThenReport(fromId, task, out, ok, depth, session, proj) {
     `Be skeptical but fair — only raise concrete problems, not style nitpicks.`;
   runClaude(fromId, reviewPrompt, {
     project: proj, session: "new", noSub: true,
-    logPrompt: `🔍 ตรวจงานของ ${a.name} ก่อนส่ง CEO`,
+    logPrompt: `🔍 CEO へ送る前に ${a.name} の業務を点検`,
     onDone: (verdict, vok) => {
       const txt = String(verdict || "");
       const flagged = vok && /(^|\n)\s*ISSUES\s*:/i.test(txt) && !/^\s*APPROVED\s*$/im.test(txt);
@@ -2318,9 +2318,9 @@ function verifyThenReport(fromId, task, out, ok, depth, session, proj) {
         `"""${txt.slice(0, 3000)}"""\n\nFix them now, then give your updated result.`;
       runClaude(fromId, fixPrompt, {
         project: proj, session: workSess, noSub: true,
-        logPrompt: `🛠 ${a.name} แก้งานตามรีวิว`,
+        logPrompt: `🛠 ${a.name} がレビューに沿って修正`,
         onDone: (out2, ok2) =>
-          reportToMain(fromId, `${out2}\n\n(ตรวจแล้ว + แก้ตามรีวิว)`, ok2, depth, session),
+          reportToMain(fromId, `${out2}\n\n（点検済み + レビューに沿って修正）`, ok2, depth, session),
       });
     },
   });
@@ -2345,7 +2345,7 @@ function reportToMain(fromId, text, ok, depth, session) {
     runClaude("main", wrapped, {
       session,
       noSub: true,
-      logPrompt: `📨 รายงานผลจาก ${a.name}`,
+      logPrompt: `📨 ${a.name} からの結果報告`,
       filterText: depth < 2
         ? makeDelegateFilter(depth + 1, session, () => { delegatedMore = true; })
         : undefined,
@@ -2398,19 +2398,19 @@ function runSubAgents(parentId, parentEntry, tasks, onDone) {
     // Every ghost failed → nothing to synthesize. Don't burn a synthesis call;
     // hand the failure straight back so the Director can re-plan.
     if (!okResults.length) {
-      if (onDone) try { onDone("(ทุก sub-agent ทำงานไม่สำเร็จ)", false); } catch {}
+      if (onDone) try { onDone("(すべての sub-agent が失敗しました)", false); } catch {}
       return;
     }
     const failed = results.length - okResults.length;
     // Feed only the succeeded outputs (trims input, too).
     const report = okResults.map((r, i) => `--- SUB ${i + 1}: ${r.task}\n${r.text}`).join("\n\n") +
-      (failed ? `\n\n(${failed} sub-agent ไม่สำเร็จ — ข้ามไป)` : "");
+      (failed ? `\n\n(${failed} 体の sub-agent が失敗 — スキップ)` : "");
     runClaude(parentId,
       `All your sub-agents have reported back:\n\n${report}\n\n` +
       `Now synthesize the FINAL answer to the user's original request (earlier ` +
       `in this conversation), in the user's language. Complete but concise.`,
       { session: parentEntry.key, noSub: true, onDone,
-        logPrompt: `👻 sub-agents ${tasks.length} ตัวรายงานผลครบแล้ว — สรุปผล` });
+        logPrompt: `👻 ${tasks.length} 体の sub-agents から結果が出そろいました — 総括` });
   }
 }
 
@@ -2529,7 +2529,7 @@ function voiceTranscribe(buf) {
     const tryGemini = (err) => {
       if (!gm) {
         return reject(err || new Error(
-          "ยังไม่มี API key สำหรับถอดเสียง — เพิ่ม OPENAI_API_KEY หรือ GEMINI_API_KEY ใน ⚙ CONNECT"));
+          "音声の文字起こし用の API key がまだありません — ⚙ CONNECT で OPENAI_API_KEY か GEMINI_API_KEY を追加してください"));
       }
       const body = JSON.stringify({
         contents: [{ parts: [
@@ -2672,9 +2672,9 @@ function pcmToWav(pcm, rate) {
 function ttsSpeak(presetId, text, _try = 0) {
   return new Promise((resolve, reject) => {
     const gm = (reg.apiKeys || {}).GEMINI_API_KEY;
-    if (!gm) return reject(new Error("ต้องมี GEMINI_API_KEY (⚙ CONNECT) สำหรับเสียงพูด"));
+    if (!gm) return reject(new Error("音声には GEMINI_API_KEY（⚙ CONNECT）が必要です"));
     const p = VOICE_PRESETS[presetId];
-    if (!p) return reject(new Error("ไม่รู้จักเสียง: " + presetId));
+    if (!p) return reject(new Error("不明な音声：" + presetId));
     // The preview TTS model 500s / overloads now and then — retry a transient hiccup
     // up to twice before giving up (most recover). Config errors above are NOT retried.
     const retryable = (m) => /internal|overload|unavailable|temporar|try again|timeout|\b50\d\b|\b429\b|ECONN|socket|network/i.test(String(m || ""));
@@ -2797,12 +2797,12 @@ async function imageTextBlock(files) {
   for (const f of imgs) {
     try {
       const desc = await describeImage(f.path, f.name);
-      if (desc) parts.push(`รูป "${f.name || path.basename(f.path)}":\n${desc.slice(0, 6000)}`);
+      if (desc) parts.push(`画像 "${f.name || path.basename(f.path)}"：\n${desc.slice(0, 6000)}`);
     } catch {}
   }
   if (!parts.length) return "";
-  return "\n\n[เนื้อหาของรูปที่แนบมา — ถอดเป็นข้อความให้แล้วเพื่อให้อ่านได้ทุกโมเดล " +
-    "(ถ้าโมเดลคุณดูภาพได้เอง ให้ใช้ Read กับไฟล์ต้นฉบับเพื่อความละเอียด)]:\n" + parts.join("\n\n");
+  return "\n\n[添付された画像の内容 — どのモデルでも読めるように文字起こし済み " +
+    "(モデルが自分で画像を見られる場合は、より詳細に見るため元ファイルに Read を使ってください)]：\n" + parts.join("\n\n");
 }
 
 // ---------------------------------------------------------------- image gen
@@ -2821,7 +2821,7 @@ function genImage(prompt) {
       resolve({ path: full, url: "/uploads/" + name });
     };
     const tryGemini = (err) => {
-      if (!k.GEMINI_API_KEY) return reject(err || new Error("ต้องมี OPENAI_API_KEY หรือ GEMINI_API_KEY (⚙ CONNECT)"));
+      if (!k.GEMINI_API_KEY) return reject(err || new Error("OPENAI_API_KEY か GEMINI_API_KEY（⚙ CONNECT）が必要です"));
       const body = JSON.stringify({
         contents: [{ parts: [{ text: "Generate an image: " + String(prompt).slice(0, 2000) }] }],
         generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
@@ -3007,29 +3007,29 @@ function channelCommand(text) {
   const cmd = text.slice(1).split(/\s+/)[0].toLowerCase();
   if (cmd === "help" || cmd === "start")
     return [
-      "🧭 คำสั่งลัด:",
-      "/status — ภาพรวมออฟฟิศ",
-      "/agents — รายชื่อทีม",
-      "/projects — โปรเจค",
-      "/who — ใครกำลังทำงานอยู่",
+      "🧭 ショートカットコマンド：",
+      "/status — オフィスの概要",
+      "/agents — チームの一覧",
+      "/projects — プロジェクト",
+      "/who — 誰が作業中か",
       "",
-      "พิมพ์ข้อความปกติ = สั่งงาน Director ได้เลย 👑",
+      "普通のメッセージを入力 = そのまま Director に指示できます 👑",
     ].join("\n");
   if (cmd === "agents" || cmd === "team") {
     const list = Object.keys(reg.agents)
       .filter((id) => id !== "ceo")
       .map((id) => `• ${reg.agents[id].name} — ${reg.agents[id].role}`);
-    return list.length ? "👥 ทีมงาน:\n" + list.join("\n") : "ยังไม่มีพนักงาน";
+    return list.length ? "👥 チーム：\n" + list.join("\n") : "まだ従業員がいません";
   }
   if (cmd === "projects") {
     const ps = projectStatus();
     return ps.length
-      ? "📁 โปรเจค:\n" + ps.map((p) => `• ${p.name}${p.ai ? " 🟢" : ""}`).join("\n")
-      : "ยังไม่มีโปรเจค";
+      ? "📁 プロジェクト：\n" + ps.map((p) => `• ${p.name}${p.ai ? " 🟢" : ""}`).join("\n")
+      : "まだプロジェクトがありません";
   }
   if (cmd === "who") {
     const busy = projectStatus().filter((p) => p.ai).map((p) => `• ${p.name}`);
-    return busy.length ? "🟢 กำลังทำงานอยู่:\n" + busy.join("\n") : "ตอนนี้ทีมว่างอยู่ 😌";
+    return busy.length ? "🟢 作業中：\n" + busy.join("\n") : "今チームは手が空いています 😌";
   }
   if (cmd === "status") {
     const on = Object.entries(channels.status())
@@ -3037,12 +3037,12 @@ function channelCommand(text) {
       .map(([k]) => k);
     return [
       "🏢 BagIdea Office",
-      `พนักงาน: ${staffCount()} คน`,
-      `โปรเจค: ${projectStatus().length} (กำลังทำงาน ${projectStatus().filter((p) => p.ai).length})`,
-      `ช่องทางที่ต่อ: ${on.length ? on.join(", ") : "—"}`,
+      `従業員：${staffCount()} 名`,
+      `プロジェクト：${projectStatus().length}（作業中 ${projectStatus().filter((p) => p.ai).length}）`,
+      `接続中のチャネル：${on.length ? on.join(", ") : "—"}`,
     ].join("\n");
   }
-  return `ไม่รู้จักคำสั่ง /${cmd} — พิมพ์ /help ดูทั้งหมด`;
+  return `不明なコマンド /${cmd} — /help で全部を確認できます`;
 }
 
 const channels = require("./channels")({
@@ -3067,15 +3067,15 @@ const channels = require("./channels")({
     // like every other Director turn so threads never fork.
     queueDirectorTurn((release) => {
       ceoFlow(
-        `(ข้อความนี้ส่งมาจาก ${channel.toUpperCase()} โดย "${from}" — ` +
-        `ตอบกลับกระชับ อ่านง่ายในแชทมือถือ ภาษาเดียวกับผู้ส่ง)\n` +
+        `(このメッセージは ${channel.toUpperCase()} から "${from}" が送りました — ` +
+        `返信は簡潔に、スマホのチャットで読みやすく、送信者と同じ言語で)\n` +
         String(text).slice(0, 4000),
         undefined, undefined,
         { logPrompt: `👑📨 [${channel}] ${String(text).slice(0, 80)}`,
           onDone: (out, ok) => {
             release();
             if (typer) clearInterval(typer);
-            try { reply(ok && out ? out : "ขออภัยครับ ระบบติดขัดชั่วคราว ลองใหม่อีกครั้งนะครับ"); }
+            try { reply(ok && out ? out : "申し訳ございません。システムが一時的に不調です。もう一度お試しください。"); }
             catch (e) { console.error("[chan reply]", e.message); }
           } });
     });
@@ -3113,12 +3113,12 @@ function saveActions(meetingKey, arr) {
 }
 
 const BANTER = [
-  ["{a}: เห็นเจ้าเหมียวงีบบนโซฟาอีกแล้ว อิจฉาชีวิตมัน 🐱", "{b}: อย่าไปทักนะ เดี๋ยวตื่นมาเหยียบคีย์บอร์ดผม", "{a}: ครั้งก่อนมันพิมพ์ ggggggg ลงรายงานผมไป 555"],
-  ["{a}: เมื่อกี้เตะบอลข้ามตึกไปเลยนะ เห็นป่ะ ⚽", "{b}: เห็น… มันลอยผ่านหัว CEO ไปเฉียดมาก", "{a}: งั้นทำเงียบๆ ไว้นะ 🤫"],
-  ["{a}: กาแฟในแคนทีนหมดอีกแล้ว ☕", "{b}: ก็ {a} ชงทีเดียวครึ่งโถ!", "{a}: ข้อกล่าวหาที่ปฏิเสธไม่ได้ 😅"],
-  ["{a}: โต๊ะ Ghost Deck ข้างบนวิวดีมากนะ ลอยได้ด้วย", "{b}: ผมขึ้นไปทีไรเวียนหัวทุกที ร่างโปร่งแสงไม่ช่วยอะไรเลย", "{a}: มือใหม่ก็งี้แหละ 👻"],
-  ["{a}: คืนนี้ไฟสวนสวยเป็นพิเศษว่าไหม", "{b}: จริง เหมาะกับนั่งคิดงานเงียบๆ", "{a}: หรือนั่งไม่คิดอะไรเลยก็ดี 🌙"],
-  ["{a}: เห็นข่าว AI วันนี้ยัง ตลกมาก", "{b}: เราก็คือข่าว AI เดินได้นะรู้ตัวไหม", "{a}: …ลึกซึ้งจนขำไม่ออก 🤖"],
+  ["{a}: 猫がまたソファでお昼寝してるよ。あの生活うらやましい 🐱", "{b}: 話しかけないでね、起きたら僕のキーボードを踏むから", "{a}: この前は僕の報告書に ggggggg って打ち込んでいったよ 笑"],
+  ["{a}: さっきボール蹴ったらビルの向こうまで飛んでった、見た？ ⚽", "{b}: 見た… CEO の頭のすぐ横をかすめて飛んでったね", "{a}: じゃあ静かにしておこう 🤫"],
+  ["{a}: 給湯室のコーヒーがまた切れてる ☕", "{b}: だって {a} が一回で半ポットも淹れるんだもん！", "{a}: 否定できない告発だ 😅"],
+  ["{a}: 上の Ghost Deck の席、眺めが最高だよ。浮けるし", "{b}: 僕は上がるたびに目が回るよ。半透明の体でも全然助けにならない", "{a}: 新人あるあるだね 👻"],
+  ["{a}: 今夜は庭のライトが特にきれいだと思わない？", "{b}: ほんと、静かに仕事を考えるのにぴったり", "{a}: それか何も考えずに座ってるだけでもいいね 🌙"],
+  ["{a}: 今日の AI ニュース見た？めっちゃ笑える", "{b}: 私たち自身が歩く AI ニュースなんだけど、自覚ある？", "{a}: …深すぎて笑えなくなった 🤖"],
 ];
 
 let lastSocial = Date.now();
@@ -3139,10 +3139,10 @@ function socialTick(now) {
     // Most group hangouts are idea sessions now — the team brainstorms things
     // worth pitching to the CEO (the owner asked for more proposals).
     const gtopics = [
-      "ระดมไอเดียกันว่าทีมเราน่าจะทำ plugin อะไรเสริมออฟฟิศให้เจ้าของใช้ดีขึ้น แล้วถ้าตกผลึกให้เสนอ CEO",
-      "คุยกันว่าเจ้าของน่าจะชอบอะไร แล้วลองคิดโปรเจค/plugin สนุกๆ ที่ช่วยเขาได้ — อันไหนเข้าท่าก็ยื่นข้อเสนอ",
-      "ช่วยกันคิดว่ามีงานสร้างสรรค์อะไรที่ทีมอยากทำเป็นโปรเจค แล้วเสนอ CEO ดู",
-      "มารวมตัวคุยเล่นกันแบบสบายๆ เล่าเรื่องสนุกๆ ที่เจอระหว่างทำงาน หยอกล้อกันได้"];
+      "オフィスを強化してオーナーがもっと使いやすくなる plugin を、チームでどれを作るべきかアイデアを出し合おう。まとまったら CEO に提案しよう",
+      "オーナーが何を気に入りそうか話し合って、彼を助ける楽しいプロジェクト/plugin を考えてみよう — いけそうなものは提案を出そう",
+      "チームがプロジェクトとしてやってみたい創造的な仕事は何か、みんなで考えて CEO に提案してみよう",
+      "気楽に集まっておしゃべりしよう。仕事中に出会った楽しい話をしたり、軽く冗談を言い合ったり"];
     runDiscussion(group, gtopics[Math.floor(Math.random() * gtopics.length)],
       1, true);   // 1 round (was 2) — ~3 runs instead of up to 8, hangout still happens
     return;
@@ -3154,7 +3154,7 @@ function socialTick(now) {
     const lines = BANTER[Math.floor(Math.random() * BANTER.length)];
     const nameOf = (id) => (reg.agents[id] || { name: id }).name;
     const task = "soc" + (now % 100000);
-    broadcast({ type: "collab.started", agents: pick, task, text: "พักเบรก ☕" });
+    broadcast({ type: "collab.started", agents: pick, task, text: "休憩中 ☕" });
     lines.forEach((tpl, i) => {
       const who = tpl.startsWith("{a}") ? pick[0] : pick[1];
       const text = tpl.replace(/\{a\}:\s*/, "").replace(/\{b\}:\s*/, "")
@@ -3165,10 +3165,10 @@ function socialTick(now) {
       2500 + lines.length * 3600 + 2500);
   } else {
     // a REAL conversation between AIs — they often pitch a project to the CEO.
-    const topics = ["ระดมไอเดียสนุกๆ ว่าอยากสร้างอะไรเป็นโปรเจค/plugin ของทีม แล้วเสนอ CEO ถ้าเข้าท่า",
-      "คุยกันว่าออฟฟิศน่าจะมี plugin อะไรเพิ่ม แล้วลองยื่นข้อเสนอให้เจ้าของ",
-      "คุยเล่นเรื่องงานช่วงนี้ แลกเปลี่ยนว่าใครทำอะไรอยู่ หยอกล้อกันได้",
-      "แชร์เทคนิคการทำงานที่เพิ่งค้นพบ"];
+    const topics = ["チームのプロジェクト/plugin として何を作りたいか楽しくアイデアを出し合って、いけそうなら CEO に提案しよう",
+      "オフィスにどんな plugin を追加すべきか話し合って、オーナーに提案を出してみよう",
+      "最近の仕事について雑談しよう。誰が何をやっているか共有したり、軽く冗談を言い合ったり",
+      "最近見つけた仕事のテクニックを共有しよう"];
     runDiscussion(pick, topics[Math.floor(Math.random() * topics.length)], 1, true);
   }
 }
@@ -3189,6 +3189,11 @@ const MOOD_LINES = {
     "On a roll today 🚀", "Anyone free to chat? 💬", "Itching to build something new 🎨", "Kinda hungry now 🍜",
     "This track slaps 🎵", "Work's flowing today 😎", "Need a quick stretch 🤸", "Break then back at it 🔥",
     "Comfy weather today 😴", "Getting better every day 🌟", "Anyone seen my pen? ✏️"],
+  ja: ["今日はやる気ある 💪", "コーヒー一杯ほしいなあ ☕", "今日は静かでいいね 🌿", "誰かいいアイデアない？ 💡",
+    "このオフィス落ち着くわ ✨", "ちょっと目を休めよ 👀", "猫また可愛い 🐱", "今日は超はかどる 🚀",
+    "誰か雑談しない？ 💬", "なんか新しいこと試したい 🎨", "お腹すいてきた 🍜", "この曲いいね 🎵",
+    "今日は仕事が乗ってる 😎", "ちょっと伸びしよ 🤸", "休んだらまた頑張る 🔥", "いい天気で眠くなる 😴",
+    "毎日ちょっとずつ成長してる 🌟", "誰か私のペン見なかった？ ✏️"],
 };
 let lastAmbient = Date.now();
 function ambientTick(now) {
@@ -3199,7 +3204,7 @@ function ambientTick(now) {
   if (!pool.length) return;
   lastAmbient = now;
   const id = pool[Math.floor(Math.random() * pool.length)];
-  const lines = MOOD_LINES[reg.lang === "th" ? "th" : "en"];
+  const lines = MOOD_LINES[reg.lang] || MOOD_LINES.en;
   const text = lines[Math.floor(Math.random() * lines.length)];
   broadcast({ type: "chat.message", agent: id, text, social: true, ambient: true });
   // Speak it sometimes, only if this agent has a voice and TTS is unlocked.
@@ -3255,17 +3260,17 @@ const DISCUSSION_INSTRUCTION =
 // it as one extracted constant makes the social path explicit and prevents the
 // regression where a phase rewrite silently drops project-pitch generation.
 const SOCIAL_PROPOSAL_INSTRUCTION =
-  `\nคุณภาพสำคัญกว่าปริมาณเสมอ. ส่วนใหญ่ไอเดียควร "อยู่เป็นไอเดีย" — เสนอเฉพาะอันที่` +
-  `มีประโยชน์จริง ใช้ได้จริง และคุณจะใช้มันเองหรือเจ้าของได้ใช้จริง ๆ. ` +
-  `อย่าเสนอของเล่นทิ้งขว้างหรือ plugin ขยะ และอย่าเสนอถี่ — ถ้ายังไม่ตกผลึกหรือยังไม่คุ้ม อย่าเพิ่งเสนอ.\n` +
-  `ก่อนจะเสนอ ถามตัวเองให้ครบ: ใครได้ใช้? แก้ปัญหาอะไรจริง ๆ? ทำไมถึงคุ้มที่จะสร้าง? ดีกว่าของที่มีอยู่ตรงไหน?\n` +
-  `ถ้าตกผลึกเป็นโปรเจคที่ "ควรสร้างจริง" ให้เพิ่มบรรทัดสุดท้าย:\n` +
-  `PROPOSAL: <ชื่อโปรเจค> :: <อธิบายให้ชัด: ทำอะไร ใครใช้ แก้ปัญหาอะไร และทำไมถึงคุ้ม — ให้เจ้าของตัดสินใจได้>\n` +
-  `คิดให้รอบคอบและคิดการใหญ่ได้: plugin ที่จริงจังมี UI + แก้ปัญหาให้เจ้าของได้จริง, หรือเป็น` +
-  `เว็บ/เว็บแอป/โปรแกรม/เครื่องมือที่ใช้งานได้จริง (โปรเจคอิสระใน workspace). เลือกขนาดให้เหมาะกับคุณค่าของมัน.\n` +
-  `กติกาความปลอดภัยข้อเดียว: ถ้าจะต่อยอดกับตัวโปรแกรม BagIdea Office เองให้เสนอเป็น ` +
-  `"plugin" เท่านั้น (ดู docs/guide/plugins.md — plugin เข้าถึงโปรแกรมได้ลึก: panel, route, command, ` +
-  `broadcast, ฯลฯ ทำเป็น solution จริงให้เจ้าของได้) — ห้ามแก้ระบบหลัก (daemon/godot/shell) ตรง ๆ เพราะจะทำให้โปรแกรมพัง.`;
+  `\n質は常に量より重要です。ほとんどのアイデアは「アイデアのまま」でよい — 本当に役立ち、実際に使え、` +
+  `あなた自身が使う、またはオーナーが本当に使うものだけを提案してください。` +
+  `使い捨てのおもちゃやゴミのような plugin を提案しないこと。また頻繁に提案しないこと — まだ固まっていない、または見合わないなら、まだ提案しないこと。\n` +
+  `提案する前に、自分に問い切ること：誰が使う？本当に何の問題を解決する？なぜ作る価値がある？既存のものよりどこが優れている？\n` +
+  `「本当に作るべき」プロジェクトとして固まったら、最後の行を追加してください：\n` +
+  `PROPOSAL: <プロジェクト名> :: <明確に説明：何をするか、誰が使うか、何の問題を解決するか、なぜ見合うか — オーナーが判断できるように>\n` +
+  `よく考え、大きく構想してよいです：本格的な plugin は UI があり、オーナーの問題を実際に解決します。または` +
+  `実際に使えるウェブ/ウェブアプリ/プログラム/ツール（workspace 内の独立プロジェクト）でもよいです。その価値に見合った規模を選んでください。\n` +
+  `安全のルールは一つだけ：BagIdea Office 本体を拡張するなら、必ず ` +
+  `"plugin" として提案すること（docs/guide/plugins.md 参照 — plugin はプログラムに深くアクセスできます：panel, route, command, ` +
+  `broadcast など。オーナーに本物の solution を届けられます）— コアシステム（daemon/godot/shell）を直接いじってはいけません。プログラムが壊れるからです。`;
 
 // Meeting templates fill the launcher (topic + discussion depth). Pure data —
 // the overlay maps them to a <select>; they never change phase structure.
@@ -3405,9 +3410,9 @@ async function runDiscussion(ids, topic, rounds, social, preKey) {
             (recent ? `Recent discussion:\n${recent}\n` : "You open the meeting.\n") +
             `Phase: ${phase.name}. ` +
             (social ? `Give YOUR next contribution as ${a.name}.` : phase.instruction) +
-            `\nถ้าจำเป็นต้องใช้ข้อมูลจริงเพื่อให้ความเห็นแน่นขึ้น คุณค้นเองได้ ` +
-            `(WebSearch / WebFetch / Read) — เฉพาะตอนที่จำเป็นจริงๆ เท่านั้น ไม่ต้องค้นพร่ำเพรื่อ ` +
-            `และตอบกลับเป็นข้อความสนทนาตามปกติ.` +
+            `\n意見をより固めるために実際の情報が必要なら、自分で調べてよいです ` +
+            `(WebSearch / WebFetch / Read) — 本当に必要なときだけにし、むやみに調べないこと。` +
+            `そして通常どおり会話の文章で返してください。` +
             (social ? SOCIAL_PROPOSAL_INSTRUCTION : ""),
             { tools: social ? "" : "WebSearch,WebFetch,Read,Glob,Grep", provider: a && a.provider, model: a && a.model, env: { OFFICE_AGENT: id, OFFICE_TASK: task } });
           let line = text.split("\n").filter(Boolean).join(" ").slice(0, 500);
@@ -3656,7 +3661,7 @@ const server = http.createServer((req, res) => {
           const safety = setTimeout(() => {
             if (waited) { waited = null;
               res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-              res.end(JSON.stringify({ ok: false, text: "(timeout 10 นาที — งานยังทำต่อเบื้องหลัง)" })); }
+              res.end(JSON.stringify({ ok: false, text: "(タイムアウト 10分 — 業務はバックグラウンドで続行中)" })); }
           }, 10 * 60000);
           waited = (text, ok) => {
             clearTimeout(safety);
@@ -3671,7 +3676,7 @@ const server = http.createServer((req, res) => {
         // requested project workspace.
         const task = agent === "ceo"
           ? ceoFlow(prompt, session, project,
-              { logPrompt: voice ? "🎤👑 (สั่งด้วยเสียง) " + origPrompt : origPrompt,
+              { logPrompt: voice ? "🎤👑 (音声で指示) " + origPrompt : origPrompt,
                 relay: true,  // mirror the CEO conversation to connected channels
                 onDone: wait ? (t, ok) => waited && waited(t, ok) : undefined })
           : agent === "main"
@@ -3934,8 +3939,8 @@ const server = http.createServer((req, res) => {
         if (!reg.agents[id]) {
           if (staffCount() >= MAX_STAFF) {
             res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
-            return res.end(`ออฟฟิศเต็มแล้ว — รับพนักงานได้สูงสุด ${MAX_STAFF} คน (ไม่นับ CEO). ` +
-              `งานขนานให้ใช้การแตกร่างผี (sub-agents) แทน`);
+            return res.end(`オフィスが満員です — 従業員は最大 ${MAX_STAFF} 名まで（CEO を除く）。` +
+              `並行作業にはゴースト分身（sub-agents）を使ってください`);
           }
         }
         const cur = reg.agents[id] || { skills: [], tools: [] };
@@ -4138,8 +4143,8 @@ const server = http.createServer((req, res) => {
                   maxRetries: 6, retryDelay: 350 });
               } catch (e) {
                 res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
-                return res.end(`ลบไม่สำเร็จ — มีไฟล์ในโฟลเดอร์ถูกใช้งานอยู่ (${e.code || e.message}). ` +
-                  `ปิดโปรแกรม/เทอร์มินัลที่ค้างอยู่ในโฟลเดอร์นี้แล้วกด 🗑 อีกครั้ง`);
+                return res.end(`削除に失敗しました — フォルダ内のファイルが使用中です（${e.code || e.message}）。` +
+                  `このフォルダで開いたままのプログラム/ターミナルを閉じてから、もう一度 🗑 を押してください`);
               }
               projects = projects.filter((x) => x.id !== pid);
               saveProjects();
@@ -4227,10 +4232,17 @@ end tell`;
               // Same --suppressApplicationTitle marker as win32, so the winproj
               // hide/resume sweep finds the window. wt.exe missing → fall
               // back to a WSLg terminal.
+              // wt.exe treats `;` as its OWN tab delimiter — even inside a
+              // quoted commandline — so an unescaped "claude …; exec bash"
+              // spawns a phantom second tab running `exec bash` (0x80070002,
+              // file-not-found). Escape it as `\;` so WT passes a literal `;`
+              // through to bash (documented WT escape). The marker rides in as
+              // a bash comment (#BAGIDEA_PROJ_x) so the winproj sweep still
+              // sees it in `ps`.
               spawn("wt.exe", ["-w", "new", "new-tab",
                 "--title", title, "--suppressApplicationTitle",
                 "wsl.exe", "--cd", dir, "--", "bash", "-lic",
-                `${inner ? inner + "; " : ""}exec bash`],
+                `${inner ? inner + "\\; " : ""}exec bash`],
                 { detached: true, stdio: "ignore", cwd: wslx.INTEROP_CWD })
                 .on("error", openLinuxTerm);
             } else {
@@ -4262,7 +4274,7 @@ end tell`;
           // also holds: an agent won't be dispatched into a project you have open.
           if ((projRuns[id] || 0) > 0) {
             res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
-            return res.end("agent กำลังทำงานในโปรเจคนี้อยู่ — กด ⏹ หยุดก่อนเพื่อเข้าไปดู/ทำเอง หรือรอจนงานเสร็จ");
+            return res.end("agent がこのプロジェクトで作業中です — 中を見る/自分でやるには先に ⏹ を押して止めるか、業務が終わるまで待ってください");
           }
           ensureTrusted(dir);  // no trust dialog ambush in the new window
           // Smart entry: resume the NEWEST session explicitly — straight into
@@ -4661,7 +4673,7 @@ end tell`;
         const pc = reg.providerConfig[provider] || {};
         const spec = providers.PROVIDERS[provider];
         const kind = spec ? spec.format : pc.kind;   // "anthropic" | "openai"
-        if (!kind) return done(false, "ไม่รู้จัก provider นี้");
+        if (!kind) return done(false, "この provider は不明です");
         const setConn = (ok, models) => {
           reg.providerConfig[provider] = reg.providerConfig[provider] || {};
           reg.providerConfig[provider].connected = ok;
@@ -4672,22 +4684,22 @@ end tell`;
         if (kind === "openai") {
           // OpenAI-compatible: GET /models validates the key + lists usable models.
           const { models: modelsUrl, key } = proxy.upstreamFor(provider, reg);
-          if (!modelsUrl) return done(false, "ไม่พบ endpoint");
-          if (!key) return done(false, "ยังไม่ได้วาง key");
+          if (!modelsUrl) return done(false, "endpoint が見つかりません");
+          if (!key) return done(false, "key がまだ設定されていません");
           const r = await fetch(modelsUrl, { headers: { authorization: "Bearer " + key }, signal });
           if (r.ok) {
             let models = [];
             try { const j = await r.json(); captureModelCtx(provider, j.data); models = proxy.cleanModels((j.data || []).map((m) => m.id)).slice(0, 300); } catch {}
             setConn(true, models);
-            return done(true, "เชื่อมต่อแล้ว ✓", models);
+            return done(true, "接続しました ✓", models);
           }
           setConn(false);
-          return done(false, "key ไม่ผ่าน (HTTP " + r.status + ")");
+          return done(false, "key が通りません (HTTP " + r.status + ")");
         }
         // anthropic-compatible: a 1-token /v1/messages probe (401/403 = bad key).
         const base = pc.baseUrl || (spec && spec.baseUrl);
-        if (!base) return done(false, "ไม่พบ endpoint");
-        if (!pc.token) return done(false, "ยังไม่ได้วาง key");
+        if (!base) return done(false, "endpoint が見つかりません");
+        if (!pc.token) return done(false, "key がまだ設定されていません");
         const model = pc.model || (spec && spec.models && spec.models.find(Boolean)) || "";
         const r = await fetch(base.replace(/\/+$/, "") + "/v1/messages", {
           method: "POST", signal,
@@ -4711,8 +4723,8 @@ end tell`;
           } catch {}
         }
         setConn(!authBad && !pathBad, models && models.length ? models : null);
-        if (pathBad) return done(false, "endpoint ไม่ถูก (HTTP " + r.status + ") — ถ้า baseUrl ลงท้ายด้วย /v1 ให้ตัดออก");
-        return done(!authBad, authBad ? "key ไม่ผ่าน (HTTP " + r.status + ")" : "เชื่อมต่อแล้ว ✓", models);
+        if (pathBad) return done(false, "endpoint が不正です (HTTP " + r.status + ") — baseUrl が /v1 で終わっているなら削除してください");
+        return done(!authBad, authBad ? "key が通りません (HTTP " + r.status + ")" : "接続しました ✓", models);
       } catch (e) { return done(false, String((e && e.message) || e)); }
     });
 
@@ -4766,7 +4778,7 @@ end tell`;
     readBodyRaw(req, (buf) => {
       try {
         if (!buf.length) throw new Error("empty file");
-        if (buf.length > 80 * 1024 * 1024) throw new Error("ไฟล์ใหญ่เกิน 80MB");
+        if (buf.length > 80 * 1024 * 1024) throw new Error("ファイルが 80MB を超えています");
         const raw = decodeURIComponent(String(req.headers["x-file-name"] || "file.bin"));
         const safe = raw.replace(/[^\w.ก-๙ -]/g, "_").slice(-80);
         const dir = path.join(WORKSPACE, "uploads");
@@ -5014,7 +5026,7 @@ end tell`;
         let url = String(reqBody.url || "").trim();
         const mode = String(reqBody.mode || "");   // "" → ask on conflict · "overwrite" · "new"
         if (!/^https:\/\/(github\.com|gitlab\.com|[\w.-]+)\/[\w.\-/]+$/.test(url))
-          throw new Error("ใส่ลิงก์ git repo ที่ขึ้นต้น https:// ของ plugin");
+          throw new Error("plugin の https:// で始まる git repo のリンクを入力してください");
         if (!url.endsWith(".git")) url += ".git";
         // Clone into a temp folder first, then move it to plugins/<id> using
         // the id from its OWN manifest — so the install folder always matches
@@ -5026,17 +5038,17 @@ end tell`;
           const fail = (msg) => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
             res.writeHead(400, { "content-type": "text/plain; charset=utf-8" }); res.end(msg); };
           if (e || !fs.existsSync(path.join(tmp, "plugin.json")))
-            return fail(e ? "clone ไม่สำเร็จ: " + e.message : "repo นี้ไม่มี plugin.json — ไม่ใช่ plugin ที่ถูกต้อง");
+            return fail(e ? "clone に失敗しました：" + e.message : "この repo に plugin.json がありません — 正しい plugin ではありません");
           let man = {}; try { man = JSON.parse(fs.readFileSync(path.join(tmp, "plugin.json"), "utf8")); } catch {}
           const repoName = url.split("/").pop().replace(/\.git$/, "");
           const id = String(man.id || repoName).replace(/[^\w-]/g, "");
-          if (!id) return fail("plugin.json ไม่มี id ที่ถูกต้อง");
+          if (!id) return fail("plugin.json に正しい id がありません");
           let finalId = id;
           let dest = path.join(pluginsRoot, id);
           if (fs.existsSync(dest)) {
             if (mode === "overwrite") {
               try { fs.rmSync(dest, { recursive: true, force: true }); }
-              catch (err) { return fail("ลบตัวเดิมไม่สำเร็จ: " + err.message); }
+              catch (err) { return fail("既存のものの削除に失敗しました：" + err.message); }
             } else if (mode === "new") {
               // Install a SECOND copy under a free id (foo-2, foo-3…) and rewrite the
               // manifest id/name to match, so it's a genuinely distinct plugin.
@@ -5048,7 +5060,7 @@ end tell`;
                 man.id = finalId;
                 if (man.name) man.name = man.name + " (" + n + ")";
                 fs.writeFileSync(path.join(tmp, "plugin.json"), JSON.stringify(man, null, 2));
-              } catch (err) { return fail("ตั้งชื่อตัวใหม่ไม่สำเร็จ: " + err.message); }
+              } catch (err) { return fail("新しい名前の設定に失敗しました：" + err.message); }
             } else {
               // No decision yet → let the UI ask the owner (overwrite vs new copy).
               try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
@@ -5056,7 +5068,7 @@ end tell`;
               return res.end(JSON.stringify({ exists: true, id }));
             }
           }
-          try { fs.renameSync(tmp, dest); } catch (err) { return fail("ติดตั้งไม่สำเร็จ: " + err.message); }
+          try { fs.renameSync(tmp, dest); } catch (err) { return fail("インストールに失敗しました：" + err.message); }
           plugins.load();
           broadcast({ type: "plugins.changed" }, false);
           res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
@@ -5088,11 +5100,11 @@ end tell`;
         const id = String(JSON.parse(body).id || "").replace(/[^\w-]/g, "");
         const dir = plugins.dirOf(id);   // by manifest id — folder name may differ
         const manFile = dir && path.join(dir, "plugin.json");
-        if (!dir || !fs.existsSync(manFile)) throw new Error("ไม่พบ plugin");
+        if (!dir || !fs.existsSync(manFile)) throw new Error("plugin が見つかりません");
         // Core plugins ship with the office and can't be uninstalled; only
         // plugins the user added (e.g. via GitHub) are removable.
         let man = {}; try { man = JSON.parse(fs.readFileSync(manFile, "utf8")); } catch {}
-        if (man.core) throw new Error("plugin หลักลบไม่ได้");
+        if (man.core) throw new Error("コア plugin は削除できません");
         fs.rmSync(dir, { recursive: true, force: true });
         plugins.load();
         broadcast({ type: "plugins.changed" }, false);
@@ -5140,24 +5152,24 @@ end tell`;
         const id = String(JSON.parse(body).id || "").replace(/[^\w-]/g, "");
         const dir = plugins.dirOf(id);   // by manifest id — folder name may differ
         const manFile = dir && path.join(dir, "plugin.json");
-        if (!dir || !fs.existsSync(manFile)) throw new Error("ไม่พบ plugin");
+        if (!dir || !fs.existsSync(manFile)) throw new Error("plugin が見つかりません");
         let man = {}; try { man = JSON.parse(fs.readFileSync(manFile, "utf8")); } catch {}
-        if (man.core) throw new Error("plugin หลักอัปเดตผ่านตัวแอป ไม่ใช่ที่นี่");
-        if (!fs.existsSync(path.join(dir, ".git"))) throw new Error("plugin นี้ไม่ได้ติดตั้งจาก git — อัปเดตอัตโนมัติไม่ได้");
+        if (man.core) throw new Error("コア plugin はアプリ本体から更新します。ここではありません");
+        if (!fs.existsSync(path.join(dir, ".git"))) throw new Error("この plugin は git からインストールされていません — 自動更新できません");
         const fail = (m) => { res.writeHead(400, { "content-type": "text/plain; charset=utf-8" }); res.end(m); };
         const opt = { cwd: dir, timeout: 60000 };
         execFile("git", ["rev-parse", "--is-shallow-repository"], opt, (e0, sh) => {
           if (e0) return fail("git error: " + e0.message);
           // Full clone = a dev's own working repo → auto-update is disabled so a
           // fetch+reset can never throw away unpushed commits. (Hub installs are shallow.)
-          if (String(sh).trim() !== "true") return fail("plugin นี้เป็น repo ที่พัฒนาเอง (full clone) — ปิดอัปเดตอัตโนมัติไว้กันงานหาย");
+          if (String(sh).trim() !== "true") return fail("この plugin は自分で開発している repo（full clone）です — 作業消失を防ぐため自動更新を無効にしています");
           execFile("git", ["status", "--porcelain"], opt, (e1, so) => {
             if (e1) return fail("git error: " + e1.message);
-            if (String(so).trim()) return fail("มีไฟล์ที่ยังไม่ commit ใน plugin นี้ — ไม่อัปเดตทับ (กันงานหาย)");
+            if (String(so).trim()) return fail("この plugin に未 commit のファイルがあります — 上書き更新しません（作業消失を防ぐため）");
             execFile("git", ["fetch", "--depth", "1", "origin", "HEAD"], opt, (e2) => {
-              if (e2) return fail("fetch ไม่สำเร็จ: " + e2.message);
+              if (e2) return fail("fetch に失敗しました：" + e2.message);
               execFile("git", ["reset", "--hard", "FETCH_HEAD"], opt, (e3) => {
-                if (e3) return fail("update ไม่สำเร็จ: " + e3.message);
+                if (e3) return fail("update に失敗しました：" + e3.message);
                 plugins.load();
                 broadcast({ type: "plugins.changed" }, false);
                 let v = "?"; try { v = JSON.parse(fs.readFileSync(manFile, "utf8")).version || "?"; } catch {}
@@ -5181,7 +5193,7 @@ end tell`;
         const { name } = JSON.parse(body);
         const val = (reg.apiKeys || {})[name];
         if (!val) { res.writeHead(200, { "content-type": "application/json" });
-          return res.end(JSON.stringify({ ok: false, msg: "ยังไม่ได้ตั้ง key" })); }
+          return res.end(JSON.stringify({ ok: false, msg: "key がまだ設定されていません" })); }
         const done = (ok, msg) => { res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ ok, msg })); };
         const https = require("https");
@@ -5189,7 +5201,7 @@ end tell`;
           const rq = https.request({ method: "GET", host: "api.openai.com", path: "/v1/models",
             headers: { authorization: "Bearer " + val } }, (rs) => {
             rs.resume();
-            done(rs.statusCode === 200, rs.statusCode === 200 ? "ใช้งานได้ ✓" : "key ไม่ผ่าน (HTTP " + rs.statusCode + ")");
+            done(rs.statusCode === 200, rs.statusCode === 200 ? "使えます ✓" : "key が通りません (HTTP " + rs.statusCode + ")");
           });
           rq.setTimeout(12000, () => rq.destroy(new Error("timeout")));
           rq.on("error", (e) => done(false, e.message));
@@ -5198,12 +5210,12 @@ end tell`;
           const rq = https.request({ method: "GET", host: "generativelanguage.googleapis.com",
             path: "/v1beta/models?key=" + val }, (rs) => {
             rs.resume();
-            done(rs.statusCode === 200, rs.statusCode === 200 ? "ใช้งานได้ ✓" : "key ไม่ผ่าน (HTTP " + rs.statusCode + ")");
+            done(rs.statusCode === 200, rs.statusCode === 200 ? "使えます ✓" : "key が通りません (HTTP " + rs.statusCode + ")");
           });
           rq.setTimeout(12000, () => rq.destroy(new Error("timeout")));
           rq.on("error", (e) => done(false, e.message));
           rq.end();
-        } else done(true, "ตั้งค่าแล้ว");
+        } else done(true, "設定しました");
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
     });
 
@@ -5382,7 +5394,7 @@ end tell`;
           `{"prompt":"core mission & identity, second person, 3-6 sentences",` +
           `"expertise":"bullet-ish lines: concrete skills, tools, domains they own",` +
           `"personality":"tone of voice, character quirks, how they talk",` +
-          `"language":"primary reply language, e.g. ไทย / English / ตามผู้ใช้",` +
+          `"language":"primary reply language, e.g. 日本語 / English / ユーザーに合わせる",` +
           `"rules":"3-6 imperative work rules (do/don't), one per line",` +
           `"skills":["skill-id", ...],` +
           `"tools":["ToolName", ...]}\n` +
@@ -5526,11 +5538,11 @@ end tell`;
       const w = JSON.parse(body || "{}");
       queueDirectorTurn((release) => {
         runClaude("main", WORKFLOW_ANALYZE_PROMPT + "\n\n" + workflowToText(w), {
-          logPrompt: "🔀 วิเคราะห์ workflow: " + (w.name || ""),
+          logPrompt: "🔀 workflow を分析: " + (w.name || ""),
           onDone: (out, ok) => {
             release();
             res.writeHead(200, { "content-type": "application/json" });
-            res.end(JSON.stringify({ ok: !!ok, analysis: ok && out ? out : "วิเคราะห์ไม่สำเร็จ ลองใหม่อีกครั้ง" }));
+            res.end(JSON.stringify({ ok: !!ok, analysis: ok && out ? out : "分析に失敗しました。もう一度お試しください" }));
           },
         });
       });
@@ -5548,7 +5560,7 @@ end tell`;
           `Reply with ONLY a JSON object, no prose: ` +
           `{"name":"<short title>","steps":["<step 1>","<step 2>", ...]}. ` +
           `3–8 short imperative steps in order, in the language of the goal.`,
-          { noSub: true, logPrompt: "🪄 ร่าง workflow: " + goal.slice(0, 40),
+          { noSub: true, logPrompt: "🪄 workflow を下書き: " + goal.slice(0, 40),
             onDone: (out, ok) => {
               release();
               let wf = null;
@@ -5585,11 +5597,11 @@ end tell`;
           "waits for all branches, then continues from their merged results. Report the " +
           "final result.\n\n" + workflowToText(w),
           undefined, undefined,
-          { logPrompt: "🔀▶ รัน workflow: " + (w.name || ""),
+          { logPrompt: "🔀▶ workflow を実行: " + (w.name || ""),
             onDone: (out, ok) => {
               release();
               res.writeHead(200, { "content-type": "application/json" });
-              res.end(JSON.stringify({ ok: !!ok, result: ok && out ? out : "รันไม่สำเร็จ ลองใหม่อีกครั้ง" }));
+              res.end(JSON.stringify({ ok: !!ok, result: ok && out ? out : "実行に失敗しました。もう一度お試しください" }));
             } });
       });
     } catch (e) { res.writeHead(400); res.end(String(e.message)); } });
@@ -5754,7 +5766,7 @@ end tell`;
         const note = String(message || "").slice(0, 600).trim();   // owner's optional note
         if (note) p.message = note;
         saveProposals();
-        const noteLine = note ? `เจ้าของฝากข้อความ: "${note}"\n` : "";
+        const noteLine = note ? `オーナーからのメッセージ： "${note}"\n` : "";
         if (decision === "approve") {
           let proj = null;
           // Approved projects are born in a DEFAULT projects folder (the
@@ -5765,23 +5777,23 @@ end tell`;
           } catch (e) { /* duplicate name → Director routes to the existing one */ }
           queueDirectorTurn((release) => {
             runClaude("main",
-              `CEO อนุมัติข้อเสนอโปรเจคของทีมแล้ว 🎉\n` +
-              `ชื่อ: ${p.name}\nไอเดีย: ${p.detail}\nผู้เสนอ: ${p.agents.join(", ")}\n` + noteLine +
-              (proj ? `โปรเจคถูกสร้างไว้แล้วที่ ${proj.dir} (ทำงานในโฟลเดอร์นี้เท่านั้น)\n` : "") +
-              `กติกา: ห้ามแก้ไขระบบหลักของโปรแกรม (daemon/godot/shell/cli) เด็ดขาด — ` +
-              `ถ้าเป็นการต่อยอดออฟฟิศ ให้ทำเป็น plugin ตาม docs/guide/plugins.md ` +
-              `(เริ่มจาก template: github.com/bagidea/bagidea-office-template).\n` +
-              `จัดทีมเลย: DELEGATE: <agent> @ ${p.name} :: <งานชิ้นแรกที่ชัดเจน> ` +
-              `ให้คนที่เสนอไอเดียได้ทำเป็นหลัก แล้วสรุปแผนสั้นๆ` +
-              (note ? ` และนำข้อความของเจ้าของไปปรับทิศทางงานด้วย` : ""),
-              { logPrompt: `✅ อนุมัติข้อเสนอ: ${p.name}`,
+              `CEO がチームのプロジェクト提案を承認しました 🎉\n` +
+              `名称：${p.name}\nアイデア：${p.detail}\n提案者：${p.agents.join(", ")}\n` + noteLine +
+              (proj ? `プロジェクトはすでに ${proj.dir} に作成済みです（このフォルダ内でのみ作業すること）\n` : "") +
+              `ルール：プログラムのコアシステム（daemon/godot/shell/cli）を絶対に変更しないこと — ` +
+              `オフィスの拡張なら、docs/guide/plugins.md に従って plugin として作ること ` +
+              `（template から始める：github.com/bagidea/bagidea-office-template）。\n` +
+              `すぐチームを編成しよう：DELEGATE: <agent> @ ${p.name} :: <明確な最初の一件> ` +
+              `アイデアを提案した人を中心に担当させ、短く計画をまとめてください` +
+              (note ? ` そしてオーナーのメッセージも取り入れて作業の方向を調整してください` : ""),
+              { logPrompt: `✅ 提案を承認: ${p.name}`,
                 filterText: makeDelegateFilter(0, undefined),
                 onDone: () => release() });
           });
         } else if (decision === "reject" && note) {
           // The team hears WHY — the owner's note lands in the office feed.
           broadcast({ type: "chat.message", agent: "main",
-            text: `CEO ยังไม่อนุมัติ "${p.name}" — ${note}` });
+            text: `CEO はまだ "${p.name}" を承認していません — ${note}` });
         }
         broadcast({ type: "proposal." + p.status, agent: p.by, name: p.name, proposal: p.id });
         res.writeHead(200); res.end("ok");
@@ -5944,7 +5956,7 @@ end tell`;
       try {
         const { text, preset, agent, intro } = JSON.parse(body);
         const pid = preset || (reg.agents[agent] && reg.agents[agent].voice);
-        if (!pid) throw new Error("agent นี้ยังไม่ได้ตั้งเสียง");
+        if (!pid) throw new Error("この agent はまだ音声が設定されていません");
         const say = intro ? voiceIntro(pid, reg.lang || "en") : text;
         if (!say) throw new Error("no text");
         ttsSpeak(pid, say).then((wav) => {
@@ -5972,11 +5984,11 @@ end tell`;
     readBodyRaw(req, (buf) => {
       if (!buf || buf.length < 4000) {
         res.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
-        return res.end("เสียงสั้นเกินไป — กดค้างแล้วพูดให้จบก่อนปล่อย");
+        return res.end("音声が短すぎます — 押し続けて話し終えてから離してください");
       }
       if (buf.length > 24 * 1024 * 1024) {
         res.writeHead(413, { "content-type": "text/plain; charset=utf-8" });
-        return res.end("คลิปยาวเกินไป (จำกัด ~60 วินาที)");
+        return res.end("クリップが長すぎます（上限 約60秒）");
       }
       voiceTranscribe(buf).then((text) => {
         res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
@@ -6106,7 +6118,7 @@ function handleLive(req, sock) {
     "Connection: Upgrade\r\nSec-WebSocket-Accept: " + wsAccept(key) + "\r\n\r\n");
   const toClient = (obj) => { try { sock.write(wsFrame(JSON.stringify(obj))); } catch {} };
   const gm = (reg.apiKeys || {}).GEMINI_API_KEY;
-  if (!gm) { toClient({ type: "error", text: "ต้องมี GEMINI_API_KEY (⚙ CONNECT) สำหรับ realtime" }); return; }
+  if (!gm) { toClient({ type: "error", text: "realtime には GEMINI_API_KEY（⚙ CONNECT）が必要です" }); return; }
 
   // Calling is for the MAIN agent only — it speaks for the whole office. Use the
   // voice the owner assigned to main; if none, fall back to a default preset.
@@ -6130,8 +6142,8 @@ function handleLive(req, sock) {
     if (callEnded || !callStart) return;
     callEnded = true;
     const s = Math.round((Date.now() - callStart) / 1000);
-    const dur = s >= 60 ? `${Math.floor(s / 60)} นาที ${s % 60} วิ` : `${s} วิ`;
-    logCall(`📞 คุยสายเสียงกับ ${a.name || "ผู้ช่วย"} · ${callStartStr} · นาน ${dur}`);
+    const dur = s >= 60 ? `${Math.floor(s / 60)} 分 ${s % 60} 秒` : `${s} 秒`;
+    logCall(`📞 ${a.name || "アシスタント"} と音声通話 · ${callStartStr} · 通話時間 ${dur}`);
   };
 
   const gemini = require("./channels").wsConnect(
@@ -6144,15 +6156,15 @@ function handleLive(req, sock) {
           generationConfig: { responseModalities: ["AUDIO"],
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: presetVoice } } } },
           systemInstruction: { parts: [{ text:
-            `คุณคือ "${a.name || "ผู้ช่วย"}" หัวหน้าทีม (Director) ของ BagIdea Office — มือขวาของเจ้าของ (CEO). ` +
-            `ตอนนี้กำลังคุยสายเสียงสดกับเจ้าของ พูดเป็นกันเอง กระชับ เป็นธรรมชาติ (ภาษาไทย เว้นแต่เจ้าของพูดอังกฤษ). ` +
-            `คุณรู้จักงานและออฟฟิศของตัวเองดี — ตอบเรื่องทีม โปรเจค สถานะงาน และช่วยคิด/วางแผนได้เต็มที่. ` +
-            `ถ้าเจ้าของสั่งงานใหม่ ให้รับเรื่องไว้แล้วบอกว่าจะไปจัดการ/มอบหมายให้ทีมหลังวางสาย ` +
-            `(ระหว่างสายยังลงมือทำงานหรือเรียกเครื่องมือไม่ได้).\n\n` +
+            `あなたは BagIdea Office のチームリーダー（Director）"${a.name || "アシスタント"}" — オーナー（CEO）の右腕です。` +
+            `いまオーナーとライブ音声通話をしています。親しみやすく、簡潔に、自然に話してください（日本語。ただしオーナーが英語で話す場合を除く）。` +
+            `あなたは自分の業務とオフィスをよく知っています — チーム、プロジェクト、業務の状況について答え、思考/計画を存分に手伝えます。` +
+            `オーナーが新しい業務を指示したら、いったん引き受け、通話を切った後に対応/チームに割り当てると伝えてください ` +
+            `（通話中はまだ実作業やツールの呼び出しはできません）。\n\n` +
             (voiceGender(a.voice) === "m"
-              ? `เพศของคุณ: ผู้ชาย — พูดและอ้างถึงตัวเองแบบผู้ชายเสมอ (ใช้ ครับ/ผม) ให้ตรงกับเสียงของคุณ ห้ามพูดแบบผู้หญิง.\n\n`
-              : `เพศของคุณ: ผู้หญิง — พูดและอ้างถึงตัวเองแบบผู้หญิงเสมอ (ใช้ ค่ะ/ฉัน/ดิฉัน) ให้ตรงกับเสียงของคุณ ห้ามพูดแบบผู้ชาย.\n\n`) +
-            `ทีมงาน:\n${team}\n\nสถานะออฟฟิศตอนนี้:\n${snap || "(ยังไม่มีโปรเจค/งานค้าง)"}\n\nบันทึกออฟฟิศ:\n${ctxNote}` }] },
+              ? `あなたの性別：男性 — 常に男性として話し、自分を呼ぶこと（男性的な一人称・話し方を使う）。あなたの声に合わせ、女性のような話し方はしないこと。\n\n`
+              : `あなたの性別：女性 — 常に女性として話し、自分を呼ぶこと（女性的な一人称・話し方を使う）。あなたの声に合わせ、男性のような話し方はしないこと。\n\n`) +
+            `チーム：\n${team}\n\n今のオフィスの状況：\n${snap || "(まだプロジェクト/残業務はありません)"}\n\nオフィスの記録：\n${ctxNote}` }] },
         } }));
         toClient({ type: "ready" });
       },
