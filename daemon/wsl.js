@@ -106,8 +106,13 @@ function buildBootCommand(wslPath, guiRootWin) {
   const env = guiRootWin
     ? `BAGIDEA_GUI_ROOT="$(wslpath -u '${String(guiRootWin).replace(/'/g, "")}')" `
     : "";
+  // [hybrid-boot] marker first (no marker = this line never ran; marker with
+  // nothing after = node died before its first write). NOTE: no setsid here —
+  // a setsid'd child escapes the wsl.exe session and WSL's init reaps it
+  // almost immediately (verified empirically); plain nohup+disown survives.
   return `cd ${cd} && (curl -s -m1 http://127.0.0.1:8787/health >/dev/null 2>&1 || ` +
-    `(${env}nohup node daemon/server.js >> daemon/daemon.log 2>&1 & disown))`;
+    `(echo [hybrid-boot] $(date) bounce >> daemon/daemon.log 2>&1; ` +
+    `${env}nohup node daemon/server.js >> daemon/daemon.log 2>&1 & disown))`;
 }
 
 // Called by server.js FIRST THING on win32. Returns true when this process

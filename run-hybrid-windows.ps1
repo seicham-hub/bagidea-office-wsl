@@ -121,15 +121,37 @@ if (DaemonUp) {
   # Quote the cd target for bash — but a leading ~ only expands unquoted, so
   # rewrite it as $HOME inside the quotes (same rule as daemon/wsl.js).
   $cdTarget = if ($WslPath.StartsWith("~/")) { '"$HOME/' + $WslPath.Substring(2) + '"' } else { '"' + $WslPath + '"' }
+  # The boot line leaves a [hybrid-boot] marker in daemon.log BEFORE starting
+  # node, so a failed start is diagnosable: no marker = the line never ran,
+  # marker but nothing after = node died before its first write. NOTE: no
+  # setsid — a setsid'd child escapes the wsl.exe session and WSL's init
+  # reaps it almost immediately (verified); plain nohup+disown survives.
   $boot = "cd $cdTarget && (curl -s -m1 http://127.0.0.1:8787/health >/dev/null 2>&1 || " +
-          "($guiRootBash nohup node daemon/server.js >> daemon/daemon.log 2>&1 & disown))"
-  & wsl.exe (WslArgs @("bash", "-lc", $boot))
-  if ($LASTEXITCODE -ne 0) { Fail "wsl.exe failed - is WSL installed and the repo at $WslPath ? (see WSL-HYBRID.md)" }
-  # Cold login can mean a full WSL VM boot + node start: allow up to 90s.
-  $deadline = (Get-Date).AddSeconds(90)
-  while (-not (DaemonUp)) {
-    if ((Get-Date) -gt $deadline) { Fail "daemon didn't come up on 127.0.0.1:8787 within 90s - check daemon/daemon.log in WSL" }
-    Start-Sleep -Milliseconds 800
+          '(echo [hybrid-boot] $(date) launcher >> daemon/daemon.log 2>&1; ' +
+          "$guiRootBash nohup node daemon/server.js >> daemon/daemon.log 2>&1 & disown))"
+  # A freshly spawned node can (rarely) get reaped right after the wsl.exe
+  # session ends — observed in the field as an empty daemon.log and no
+  # listener. One boot re-fire covers that transient; a second miss is real.
+  $up = $false
+  foreach ($attempt in 1, 2) {
+    & wsl.exe (WslArgs @("bash", "-lc", $boot))
+    if ($LASTEXITCODE -ne 0) { Fail "wsl.exe failed - is WSL installed and the repo at $WslPath ? (see WSL-HYBRID.md)" }
+    # Cold login can mean a full WSL VM boot + node start: allow up to 60s per attempt.
+    $deadline = (Get-Date).AddSeconds(60)
+    while (-not ($up = DaemonUp)) {
+      if ((Get-Date) -gt $deadline) { break }
+      Start-Sleep -Milliseconds 800
+    }
+    if ($up) { break }
+    if ($attempt -eq 1) { Info "daemon not up yet - re-firing the boot once (transient reap guard)..." }
+  }
+  if (-not $up) {
+    Write-Host "  x daemon didn't come up on 127.0.0.1:8787 - diagnostics from WSL:" -ForegroundColor Red
+    & wsl.exe (WslArgs @("bash", "-lc",
+      "echo '--- tail daemon/daemon.log ---'; tail -n 20 $WslPath/daemon/daemon.log 2>&1; " +
+      "echo '--- node/curl on PATH (bash -lc) ---'; command -v node; command -v curl; " +
+      "echo '--- port 8787 ---'; ss -tln 2>/dev/null | grep 8787 || echo 'not listening'"))
+    exit 1
   }
   Ok "daemon is up on 127.0.0.1:8787"
 }

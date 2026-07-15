@@ -49,7 +49,11 @@ test('buildBootCommand quotes an absolute path as-is', () => {
 test('buildBootCommand is a health-gated background boot', () => {
   const cmd = buildBootCommand('~/office', null);
   assert.ok(cmd.includes('curl -s -m1 http://127.0.0.1:8787/health'), 'probes health first');
+  assert.ok(cmd.includes('echo [hybrid-boot] $(date) bounce >> daemon/daemon.log'),
+    'leaves a diagnosable marker before starting node');
   assert.ok(cmd.includes('nohup node daemon/server.js'), 'boots the daemon');
+  assert.ok(!cmd.includes('setsid'),
+    'no setsid — a setsid child escapes the wsl.exe session and WSL init reaps it');
   assert.ok(cmd.includes('& disown'), 'detaches so it survives wsl.exe returning');
   assert.ok(!cmd.includes('BAGIDEA_GUI_ROOT'), 'no GUI root when none was given');
 });
