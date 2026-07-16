@@ -3498,6 +3498,7 @@ function readBodyRaw(req, cb) {
 }
 
 const MAPBG = path.join(__dirname, "map_bg.png");
+let latestWorldPos = [];
 const LAYOUT_FILE = path.join(__dirname, "layout.json");   // Office Editor
 const PRESETS_FILE = path.join(__dirname, "presets.json"); // saved layouts
 const ASSETS_FILE = path.join(__dirname, "assets.json");   // imported models/images
@@ -3880,7 +3881,8 @@ const server = http.createServer((req, res) => {
     // 1 Hz live positions from the renderer → overlay map (never journaled).
     readBody(req, (body) => {
       try {
-        broadcast({ type: "world.pos", agents: JSON.parse(body).agents }, false);
+        latestWorldPos = (JSON.parse(body).agents || []).slice(0, 300);
+        broadcast({ type: "world.pos", agents: latestWorldPos }, false);
         res.writeHead(200);
         res.end("ok");
       } catch {
@@ -3888,6 +3890,11 @@ const server = http.createServer((req, res) => {
         res.end("bad json");
       }
     });
+
+  } else if (req.method === "GET" && req.url === "/pos/latest") {
+    // Last world positions for shell-side hit layers (never journaled).
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+    res.end(JSON.stringify({ agents: latestWorldPos }));
 
   } else if (req.method === "GET" && req.url === "/registry") {
     // Ship the backend's curated model catalog alongside reg so the brain picker

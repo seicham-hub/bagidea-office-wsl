@@ -89,19 +89,43 @@ func resnap_agents() -> void:
 func _stream_positions() -> void:
 	if _pos_busy:
 		return
+	var cam := get_viewport().get_camera_3d()
+	var vsize := get_viewport().get_visible_rect().size
+	var has_cam := is_instance_valid(cam) and vsize.x > 1.0 and vsize.y > 1.0
 	var list := []
 	for id in agents:
 		var a: Dictionary = agents[id]
 		if is_instance_valid(a.node):
-			list.append({"id": id, "x": a.node.position.x, "z": a.node.position.z,
-				"state": a.state})
+			var item := {"id": id, "x": a.node.position.x, "z": a.node.position.z,
+				"state": a.state}
+			if has_cam:
+				var head := a.node.global_position + Vector3(0.0, 1.15, 0.0)
+				if not cam.is_position_behind(head):
+					var sp := cam.unproject_position(head)
+					item["sx"] = clampf(sp.x / vsize.x, 0.0, 1.0)
+					item["sy"] = clampf(sp.y / vsize.y, 0.0, 1.0)
+			list.append(item)
 	if is_instance_valid(ceo) and not agents.has("ceo"):
-		list.append({"id": "ceo", "x": ceo.position.x, "z": ceo.position.z, "state": "idle"})
+		var ceo_item := {"id": "ceo", "x": ceo.position.x, "z": ceo.position.z, "state": "idle"}
+		if has_cam:
+			var chead := ceo.global_position + Vector3(0.0, 1.15, 0.0)
+			if not cam.is_position_behind(chead):
+				var csp := cam.unproject_position(chead)
+				ceo_item["sx"] = clampf(csp.x / vsize.x, 0.0, 1.0)
+				ceo_item["sy"] = clampf(csp.y / vsize.y, 0.0, 1.0)
+		list.append(ceo_item)
 	for sub in ghosts:
 		var gh: Dictionary = ghosts[sub]
 		if is_instance_valid(gh.node):
-			list.append({"id": sub, "x": gh.node.position.x, "z": gh.node.position.z,
-				"state": "ghost"})
+			var gitem := {"id": sub, "x": gh.node.position.x, "z": gh.node.position.z,
+				"state": "ghost"}
+			if has_cam:
+				var ghead := gh.node.global_position + Vector3(0.0, 1.1, 0.0)
+				if not cam.is_position_behind(ghead):
+					var gsp := cam.unproject_position(ghead)
+					gitem["sx"] = clampf(gsp.x / vsize.x, 0.0, 1.0)
+					gitem["sy"] = clampf(gsp.y / vsize.y, 0.0, 1.0)
+			list.append(gitem)
 	if list.is_empty():
 		return
 	_pos_busy = true

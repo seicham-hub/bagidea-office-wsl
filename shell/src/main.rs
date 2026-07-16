@@ -115,6 +115,9 @@ enum UserEvent {
     PopupClose(tao::window::WindowId), // a pop-out asked to close itself
     PopupMin(tao::window::WindowId),   // minimize (พัก)
     PopupMax(tao::window::WindowId),   // toggle maximize / restore
+    HitHotspots(String),               // x,y|x,y|...
+    HitTalk(String),                   // talk to this agent id
+    HitBack,                           // return to previous chat target
 }
 
 // Run a child process without flashing a console window (Windows); a no-op
@@ -215,6 +218,92 @@ const ORB_HTML: &str = r#"<!doctype html>
 </script>
 </body></html>"#;
 
+const HIT_HTML: &str = r#"<!doctype html>
+<html><body style="margin:0;overflow:hidden;background:transparent;user-select:none;-webkit-user-select:none">
+<style>
+  #layer { position: fixed; inset: 0; }
+  .spot {
+    position: absolute; width: 58px; height: 58px; margin: -29px 0 0 -29px;
+    border-radius: 999px; border: 1px solid rgba(110, 190, 255, 0.35);
+    background: transparent; cursor: pointer;
+  }
+  .spot:hover { border-color: rgba(110, 210, 255, 0.95); box-shadow: 0 0 16px rgba(110,210,255,0.45); }
+  #menu {
+    display: none; position: fixed; z-index: 2; min-width: 120px; padding: 6px;
+    border-radius: 10px; border: 1px solid rgba(110, 180, 255, 0.4);
+    background: rgba(10, 16, 28, 0.96); box-shadow: 0 10px 26px rgba(0,0,0,0.55);
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif; color: #d9e8ff;
+  }
+  #menu button {
+    display:block; width:100%; margin:2px 0; border:0; border-radius:8px; padding:7px 10px;
+    background: rgba(255,255,255,0.06); color: inherit; text-align:left; cursor:pointer;
+  }
+  #menu button:hover { background: rgba(94,200,255,0.24); }
+</style>
+<div id="layer"></div>
+<div id="menu"><button id="talk">💬 話す</button><button id="back">↩ 戻る</button></div>
+<script>
+(() => {
+  const layer = document.getElementById("layer");
+  const menu = document.getElementById("menu");
+  let points = [], selected = "";
+  const post = (m) => { try { window.ipc.postMessage(m); } catch {} };
+  function draw() {
+    layer.innerHTML = "";
+    const pairs = [];
+    for (const p of points) {
+      const x = Math.round(p.x * window.innerWidth);
+      const y = Math.round(p.y * window.innerHeight);
+      pairs.push(`${x},${y}`);
+      const s = document.createElement("div");
+      s.className = "spot";
+      s.style.left = x + "px";
+      s.style.top = y + "px";
+      s.title = p.id || "agent";
+      s.onclick = (e) => {
+        e.stopPropagation();
+        selected = p.id || "";
+        menu.style.display = "block";
+        menu.style.left = Math.min(window.innerWidth - 130, x + 24) + "px";
+        menu.style.top = Math.min(window.innerHeight - 90, y - 8) + "px";
+      };
+      layer.appendChild(s);
+    }
+    post("hotspots:" + pairs.join("|"));
+  }
+  function apply(src) {
+    points = (src || [])
+      .filter((a) => a && typeof a.sx === "number" && typeof a.sy === "number")
+      .filter((a) => !String(a.id || "").includes("#"))
+      .filter((a) => a.sx >= 0 && a.sx <= 1 && a.sy >= 0 && a.sy <= 1)
+      .map((a) => ({ id: String(a.id || ""), x: a.sx, y: a.sy }));
+    draw();
+  }
+  async function poll() {
+    try {
+      const r = await fetch("http://127.0.0.1:8787/pos/latest", { cache: "no-store" });
+      if (r.ok) {
+        const j = await r.json();
+        apply(j.agents || []);
+      }
+    } catch {}
+  }
+  function wire() {
+    poll();
+    setInterval(poll, 1000);
+  }
+  document.getElementById("talk").onclick = () => {
+    if (selected) post("agent-talk:" + selected);
+    menu.style.display = "none";
+  };
+  document.getElementById("back").onclick = () => { post("agent-back"); menu.style.display = "none"; };
+  window.addEventListener("resize", draw);
+  document.addEventListener("mousedown", (e) => { if (!e.target.closest("#menu")) menu.style.display = "none"; });
+  wire();
+})();
+</script>
+</body></html>"#;
+
 // The orb's logo is EMBEDDED in the binary as a data: URI rather than fetched from the
 // daemon over HTTP. On a cold boot the shell paints the orb before the daemon's web
 // server is up, so an HTTP <img> would 404 and the orb would sit dark until a manual
@@ -225,6 +314,9 @@ fn logo_data_uri() -> String {
 }
 fn orb_html() -> String { ORB_HTML.replace("__LOGO__", &logo_data_uri()) }
 fn splash_html() -> String { SPLASH_HTML.replace("__LOGO__", &logo_data_uri()) }
+fn js_quote(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('\'', "\\'")
+}
 
 fn base64_encode(data: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -1189,6 +1281,27 @@ mod platform {
         }
     }
 
+    pub fn region_hotspots(window: &Window, pts: &[(i32, i32)], radius: i32) {
+        use windows_sys::Win32::Graphics::Gdi::{CombineRgn, DeleteObject, RGN_OR};
+        let hwnd = window.hwnd() as HWND;
+        unsafe {
+            if pts.is_empty() {
+                let rgn = CreateRectRgn(0, 0, 0, 0);
+                SetWindowRgn(hwnd, rgn, 1);
+                return;
+            }
+            let first = pts[0];
+            let mut base = CreateEllipticRgn(
+                first.0 - radius, first.1 - radius, first.0 + radius + 1, first.1 + radius + 1);
+            for (x, y) in pts.iter().skip(1) {
+                let r = CreateEllipticRgn(x - radius, y - radius, x + radius + 1, y + radius + 1);
+                CombineRgn(base, base, r, RGN_OR);
+                DeleteObject(r as _);
+            }
+            SetWindowRgn(hwnd, base, 1);
+        }
+    }
+
     pub fn set_feed_alpha(window: &Window, feed: bool) {
         unsafe {
             let hwnd = window.hwnd() as HWND;
@@ -1654,6 +1767,7 @@ mod platform {
     pub fn region_circle(window: &Window, d: f64) {
         round_corners(window, d / 2.0);
     }
+    pub fn region_hotspots(_window: &Window, _pts: &[(i32, i32)], _radius: i32) {}
 
     pub fn set_feed_alpha(window: &Window, feed: bool) {
         unsafe {
@@ -1905,6 +2019,7 @@ mod platform {
     pub fn suppress_nc(_w: &Window) {}
     pub fn region_round(_w: &Window, _a: f64, _b: f64, _r: f64) {}
     pub fn region_circle(_w: &Window, _d: f64) {}
+    pub fn region_hotspots(_w: &Window, _pts: &[(i32, i32)], _radius: i32) {}
     pub fn set_feed_alpha(_w: &Window, _f: bool) {}
     pub fn webview_extras<'a>(b: wry::WebViewBuilder<'a>) -> wry::WebViewBuilder<'a> { b }
     pub fn is_autostart() -> bool { false }
@@ -2199,6 +2314,35 @@ fn main() {
         overlay.set_visible(false);
     }
 
+    #[cfg(target_os = "windows")]
+    let hit_layer = chrome_window(
+        &event_loop, "BagIdea Hit Layer", logical_w, logical_h, 0.0, 0.0, None, true,
+    );
+    #[cfg(target_os = "windows")]
+    platform::set_no_activate(&hit_layer);
+    #[cfg(target_os = "windows")]
+    let p_hit = proxy.clone();
+    #[cfg(target_os = "windows")]
+    let _hit_view = WebViewBuilder::new()
+        .with_transparent(true)
+        .with_html(HIT_HTML)
+        .with_ipc_handler(move |req| {
+            let _ = match req.body().as_str() {
+                s if s.starts_with("hotspots:") =>
+                    p_hit.send_event(UserEvent::HitHotspots(s[9..].to_string())),
+                s if s.starts_with("agent-talk:") =>
+                    p_hit.send_event(UserEvent::HitTalk(s[11..].to_string())),
+                "agent-back" => p_hit.send_event(UserEvent::HitBack),
+                _ => Ok(()),
+            };
+        })
+        .build(&hit_layer)
+        .expect("hit layer webview");
+    #[cfg(target_os = "windows")]
+    platform::region_hotspots(&hit_layer, &[], 30);
+    #[cfg(target_os = "windows")]
+    hit_layer.set_outer_position(LogicalPosition::new(PARK.0, PARK.1 + 420.0));
+
     // ---- circular chat head
     let orb = chrome_window(
         &event_loop, "BagIdea", ORB_SIZE, ORB_SIZE, orb_x, orb_y, app_icon(), true,
@@ -2241,6 +2385,8 @@ fn main() {
     let mut popups: Vec<(tao::window::WindowId, String, Window, wry::WebView)> = Vec::new();
     let mut mini = false;
     let mut feed = false;
+    let mut current_target = String::from("ceo");
+    let mut previous_target = String::from("ceo");
     let mut editor_pid: u32 = 0;
     let mut world_ready = false;
     // Tracks whether the wallpaper is believed visible (30 fps) vs throttled
@@ -2302,9 +2448,13 @@ fn main() {
                 if hidden {
                     overlay.set_outer_position(LogicalPosition::new(PARK.0, PARK.1));
                     orb.set_outer_position(LogicalPosition::new(PARK.0, PARK.1 + 200.0));
+                    #[cfg(target_os = "windows")]
+                    hit_layer.set_outer_position(LogicalPosition::new(PARK.0, PARK.1 + 420.0));
                 } else {
                     orb.set_outer_position(LogicalPosition::new(orb_x, orb_y));
                     raise_orb(&orb);
+                    #[cfg(target_os = "windows")]
+                    hit_layer.set_outer_position(LogicalPosition::new(0.0, 0.0));
                 }
                 vis_on = !hidden;
                 post_visibility(!hidden);
@@ -2385,6 +2535,10 @@ fn main() {
                         // Orb is now shown at its real spot with DPI settled — clip it to a
                         // circle so its transparent corners are click-through to the desktop.
                         platform::region_circle(&orb, ORB_SIZE);
+                    }
+                    #[cfg(target_os = "windows")]
+                    if !hide_item.is_checked() {
+                        hit_layer.set_outer_position(LogicalPosition::new(0.0, 0.0));
                     }
                 }
                 UserEvent::EditorOpening => {
@@ -2540,6 +2694,43 @@ fn main() {
                 UserEvent::PopupMax(id) => {
                     if let Some((_, _, win, _)) = popups.iter().find(|(i, _, _, _)| *i == id) {
                         win.set_maximized(!win.is_maximized());
+                    }
+                }
+                UserEvent::HitHotspots(raw) => {
+                    #[cfg(target_os = "windows")]
+                    {
+                        let mut pts: Vec<(i32, i32)> = Vec::new();
+                        for pair in raw.split('|') {
+                            let mut it = pair.split(',');
+                            let x = it.next().and_then(|v| v.parse::<i32>().ok());
+                            let y = it.next().and_then(|v| v.parse::<i32>().ok());
+                            if let (Some(px), Some(py)) = (x, y) {
+                                pts.push((px, py));
+                            }
+                        }
+                        platform::region_hotspots(&hit_layer, &pts, 30);
+                    }
+                }
+                UserEvent::HitTalk(id) => {
+                    if !id.trim().is_empty() {
+                        let hidden = overlay.outer_position().map(|p| p.x < -2000).unwrap_or(true);
+                        if hidden { do_toggle(feed); }
+                        let clean = js_quote(id.trim());
+                        let _ = overlay_view.evaluate_script(&format!(
+                            "window.setTarget && setTarget('{}');", clean));
+                        previous_target = current_target.clone();
+                        current_target = id.trim().to_string();
+                    }
+                }
+                UserEvent::HitBack => {
+                    if !previous_target.trim().is_empty() {
+                        let hidden = overlay.outer_position().map(|p| p.x < -2000).unwrap_or(true);
+                        if hidden { do_toggle(feed); }
+                        let back = previous_target.clone();
+                        let clean = js_quote(back.trim());
+                        let _ = overlay_view.evaluate_script(&format!(
+                            "window.setTarget && setTarget('{}');", clean));
+                        current_target = back;
                     }
                 }
             },
