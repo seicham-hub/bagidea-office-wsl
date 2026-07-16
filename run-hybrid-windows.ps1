@@ -42,6 +42,18 @@ function Fail($msg) { Write-Host "  x $msg" -ForegroundColor Red; exit 1 }
 function Ok($msg)   { Write-Host "  + $msg" -ForegroundColor Green }
 function Info($msg) { Write-Host "  - $msg" -ForegroundColor DarkGray }
 
+# taskkill/reg report "nothing to kill" / "no such value" on stderr, which is a
+# normal outcome for the teardown below. PS 5.1 wraps a REDIRECTED native stderr
+# into a NativeCommandError record, and $ErrorActionPreference="Stop" above
+# promotes that to a TERMINATING error — so a bare `2>$null` ABORTS the script
+# instead of silencing it. Drop the preference for the call so nothing is
+# promoted, and swallow both streams.
+function Quiet([scriptblock]$sb) {
+  $old = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try { & $sb 2>&1 | Out-Null } finally { $ErrorActionPreference = $old }
+}
+
 # wsl.exe arg helper — inserts -d <distro> only when one was named.
 function WslArgs([string[]]$cmd) {
   $a = @()
@@ -80,7 +92,7 @@ if ($Register) {
   exit 0
 }
 if ($Unregister) {
-  reg delete $RUNKEY /v BagIdeaOffice /f 2>$null | Out-Null
+  Quiet { reg delete $RUNKEY /v BagIdeaOffice /f }
   if (Test-Path $HYBRID_TXT) { Remove-Item $HYBRID_TXT -Force }
   Ok "login autostart removed (hybrid marker cleared - pure-Windows mode is available again)"
   exit 0
@@ -90,10 +102,10 @@ if ($Unregister) {
 if ($Stop -or $Restart) {
   # GUI side (Windows): shell + the Godot world (branded or stock name).
   foreach ($p in @("bagidea-office-shell", "BagIdeaOffice")) {
-    taskkill /IM "$p.exe" /T /F 2>$null | Out-Null
+    Quiet { taskkill /IM "$p.exe" /T /F }
   }
-  Get-Process | Where-Object { $_.Name -like "Godot*" } | ForEach-Object {
-    taskkill /PID $_.Id /T /F 2>$null | Out-Null
+  foreach ($g in @(Get-Process | Where-Object { $_.Name -like "Godot*" })) {
+    Quiet { taskkill /PID $g.Id /T /F }
   }
   # Daemon side (WSL).
   & wsl.exe (WslArgs @("bash", "-lc", "pkill -f 'node.*daemon/server\.js' || true"))
