@@ -213,10 +213,27 @@ func _maybe_focus(node: Node3D, chance := 0.45, dur := 7.0) -> void:
 	if rig:
 		rig.focus_on(node, dur)
 
+## The character currently frozen + zoomed by a wallpaper click (so we can
+## release it when the chat closes).
+var _click_focus_node: Node3D = null
+
 ## Wallpaper click on a character: stop it in place and glide the camera in for a
-## tight close-up (a few seconds), then it eases back and the agent resumes.
+## tight close-up. It stays zoomed until the chat closes — the shell then sends a
+## focus event with an empty id, which eases the camera back and frees the agent.
+## A long safety cap on the hold prevents a permanent freeze if that clear is lost.
 func _focus_click(id: String) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	var rig := get_node_or_null("../CameraRig")
 	if id == "":
+		# Stop talking → release the hold and ease the camera back out.
+		if is_instance_valid(_click_focus_node) and _click_focus_node.has_method("release"):
+			_click_focus_node.release()
+		if _click_focus_node == ceo:
+			ceo_hold_until = 0.0
+		_click_focus_node = null
+		if rig and rig.has_method("release_focus"):
+			rig.release_focus()
+		_focus_cd = now + 2.0   # let ambient close-ups resume shortly
 		return
 	var node: Node3D = null
 	if id == "ceo":
@@ -225,16 +242,20 @@ func _focus_click(id: String) -> void:
 		node = agents[id].node
 	if not is_instance_valid(node):
 		return
-	var dur := 9.0
+	# A new pick releases the previously held character.
+	if is_instance_valid(_click_focus_node) and _click_focus_node != node \
+			and _click_focus_node.has_method("release"):
+		_click_focus_node.release()
+	var dur := 300.0   # "until the chat closes" — safety cap so a lost clear can't freeze forever
 	if node.has_method("hold"):
 		node.hold(dur)
 	if id == "ceo":
-		ceo_hold_until = Time.get_ticks_msec() / 1000.0 + dur
-	var rig := get_node_or_null("../CameraRig")
+		ceo_hold_until = now + dur
+	_click_focus_node = node
 	if rig and rig.has_method("focus_on"):
 		rig.focus_on(node, dur, 15.0)   # tighter zoom than ambient close-ups
-	# Don't let an ambient close-up immediately steal the shot back.
-	_focus_cd = Time.get_ticks_msec() / 1000.0 + dur
+	# Don't let an ambient close-up steal the shot while the user is looking.
+	_focus_cd = now + dur
 
 ## Symbol FX (check / X / alert / thumbs / notes) play on the HUD layer —
 ## ABOVE the nameplate that was eating the in-world version. Body bursts

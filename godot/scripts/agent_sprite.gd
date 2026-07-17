@@ -148,6 +148,10 @@ func hold(dur := 9.0) -> void:
 func is_held() -> bool:
 	return Time.get_ticks_msec() / 1000.0 < _held_until
 
+## Release a hold early (chat closed) so the character can move again.
+func release() -> void:
+	_held_until = 0.0
+
 ## Spectral mode for sub-agent clones: steadily translucent (see-through,
 ## no flicker), cool self-lit tint, rising soul-wisp particles and an
 ## afterimage trail while gliding. Call after the node has entered the tree.

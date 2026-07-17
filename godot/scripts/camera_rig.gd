@@ -39,6 +39,11 @@ func focus_on(node: Node3D, dur := 7.0, zoom := 21.0) -> void:
 func is_focusing() -> bool:
 	return is_instance_valid(_focus_node) and Time.get_ticks_msec() / 1000.0 < _focus_until
 
+## End the current close-up now — the camera eases smoothly back to its drift.
+## Used when the user closes the chat after a wallpaper-click focus.
+func release_focus() -> void:
+	_focus_until = 0.0
+
 func _process(delta: float) -> void:
 	if not drift or drift_amount <= 0.0:
 		return

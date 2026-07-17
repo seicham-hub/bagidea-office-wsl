@@ -224,9 +224,10 @@ const HIT_HTML: &str = r##"<!doctype html>
 <html><body style="margin:0;overflow:hidden;background:transparent;user-select:none;-webkit-user-select:none">
 <style>
   #layer { position: fixed; inset: 0; }
-  /* Invisible click target — no visible ring/glow, but still catches the click. */
+  /* Invisible click target — no visible ring/glow, but still catches the click.
+     Large so the whole character (not just a tiny spot) is easy to click. */
   .spot {
-    position: absolute; width: 58px; height: 58px; margin: -29px 0 0 -29px;
+    position: absolute; width: 110px; height: 110px; margin: -55px 0 0 -55px;
     border-radius: 999px; border: 0; background: transparent; cursor: pointer;
   }
   #menu {
@@ -2129,6 +2130,25 @@ fn forward_deep_link(url: &str) -> bool {
     }
 }
 
+// Fire-and-forget GET to the local daemon on its own thread (never blocks the
+// UI loop). Used to clear the wallpaper close-up (`/focus` with no id) when the
+// chat closes, so the camera zooms back out.
+fn daemon_get(path: &str) {
+    let path = path.to_string();
+    std::thread::spawn(move || {
+        use std::io::Write;
+        let req = format!(
+            "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+            path
+        );
+        if let Ok(mut s) = std::net::TcpStream::connect(("127.0.0.1", 8787)) {
+            let _ = s.set_write_timeout(Some(std::time::Duration::from_millis(500)));
+            let _ = s.write_all(req.as_bytes());
+            let _ = s.flush();
+        }
+    });
+}
+
 fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(b.len());
@@ -2485,6 +2505,7 @@ fn main() {
                     orb.set_outer_position(LogicalPosition::new(PARK.0, PARK.1 + 200.0));
                     #[cfg(target_os = "windows")]
                     hit_layer.set_outer_position(LogicalPosition::new(PARK.0, PARK.1 + 420.0));
+                    daemon_get("/focus");   // clear any close-up when hiding the office
                 } else {
                     orb.set_outer_position(LogicalPosition::new(orb_x, orb_y));
                     raise_orb(&orb);
@@ -2526,6 +2547,8 @@ fn main() {
                 raise_orb(&orb);
             } else {
                 overlay.set_outer_position(LogicalPosition::new(PARK.0, PARK.1));
+                // Chat closed → clear any wallpaper close-up (camera zooms back out).
+                daemon_get("/focus");
             }
             let _ = &overlay_view;
         };
@@ -2594,6 +2617,8 @@ fn main() {
                 UserEvent::Toggle => do_toggle(feed),
                 UserEvent::HideOverlay => {
                     overlay.set_outer_position(LogicalPosition::new(PARK.0, PARK.1));
+                    // Chat closed → clear any wallpaper close-up (camera zooms out).
+                    daemon_get("/focus");
                 }
                 UserEvent::MiniToggle => {
                     if !feed {
@@ -2748,7 +2773,7 @@ fn main() {
                             }
                         }
                         hit_pts = pts;
-                        let radius = (30.0 * sf) as i32;
+                        let radius = (55.0 * sf) as i32;
                         platform::region_hotspots(&hit_layer, &hit_pts, radius);
                     }
                 }
@@ -2760,7 +2785,7 @@ fn main() {
                     #[cfg(target_os = "windows")]
                     {
                         let sf = hit_layer.scale_factor();
-                        let radius = (30.0 * sf) as i32;
+                        let radius = (55.0 * sf) as i32;
                         platform::region_hotspots(&hit_layer, &hit_pts, radius);
                     }
                 }
