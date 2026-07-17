@@ -3892,9 +3892,30 @@ const server = http.createServer((req, res) => {
     });
 
   } else if (req.method === "GET" && req.url === "/pos/latest") {
-    // Last world positions for shell-side hit layers (never journaled).
-    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+    // Last world positions for shell-side hit layers (never journaled). The shell's
+    // hit layer is loaded via with_html (origin "null"), so this cross-origin fetch
+    // needs an explicit CORS header or the WebView blocks the JS from reading it.
+    res.writeHead(200, {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "*",
+    });
     res.end(JSON.stringify({ agents: latestWorldPos }));
+
+  } else if (req.method === "GET" && req.url.startsWith("/focus")) {
+    // Wallpaper click on a character → tell the renderer to stop that agent and
+    // zoom the camera in on them. GET (a "simple" cross-origin request) so the
+    // hit layer's fetch needs no CORS preflight; never journaled.
+    let fid = "";
+    try { fid = new URL(req.url, "http://x").searchParams.get("id") || ""; } catch {}
+    fid = String(fid).slice(0, 120);
+    if (fid) broadcast({ type: "world.focus", agent: fid }, false);
+    res.writeHead(200, {
+      "content-type": "text/plain",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "*",
+    });
+    res.end("ok");
 
   } else if (req.method === "GET" && req.url === "/registry") {
     // Ship the backend's curated model catalog alongside reg so the brain picker

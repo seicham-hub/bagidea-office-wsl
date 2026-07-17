@@ -132,6 +132,22 @@ func unfollow() -> void:
 	follow_node = null
 	_walking = false
 
+var _held_until := 0.0
+
+## Freeze in place for `dur` seconds — used when the user clicks the character on
+## the wallpaper so it stops to be looked at (camera zoom). While held, walk_to is
+## a no-op and tailing is suspended, so the manager's loops can't drag it away.
+func hold(dur := 9.0) -> void:
+	_held_until = Time.get_ticks_msec() / 1000.0 + dur
+	follow_node = null
+	if _walk_tween:
+		_walk_tween.kill()
+	_walking = false
+	_dir = DIR_DOWN   # turn to face the camera
+
+func is_held() -> bool:
+	return Time.get_ticks_msec() / 1000.0 < _held_until
+
 ## Spectral mode for sub-agent clones: steadily translucent (see-through,
 ## no flicker), cool self-lit tint, rising soul-wisp particles and an
 ## afterimage trail while gliding. Call after the node has entered the tree.
@@ -335,7 +351,7 @@ func _process(delta: float) -> void:
 	# they walk. Steering only operates at CLOSE range (same room, line of
 	# sight assumed); when the target gets far, the manager's tail loop
 	# re-routes along the A* graph so nobody cuts through walls.
-	if follow_node != null:
+	if follow_node != null and not is_held():
 		if not is_instance_valid(follow_node):
 			follow_node = null
 		else:
@@ -416,6 +432,8 @@ func teleport(pos: Vector3) -> void:
 	position = pos
 
 func walk_to(points: Array, face_dir := -1) -> float:
+	if is_held():
+		return 0.0   # frozen by a wallpaper-click focus — ignore movement orders
 	if points.is_empty():
 		if face_dir >= 0: _dir = face_dir   # already there — just turn to face
 		return 0.0

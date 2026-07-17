@@ -118,6 +118,8 @@ enum UserEvent {
     HitHotspots(String),               // x,y|x,y|...
     HitTalk(String),                   // talk to this agent id
     HitBack,                           // return to previous chat target
+    HitMenuOpen,                       // popup menu shown → make whole layer clickable
+    HitMenuClose,                      // popup menu dismissed → back to spot circles
 }
 
 // Run a child process without flashing a console window (Windows); a no-op
@@ -222,12 +224,11 @@ const HIT_HTML: &str = r##"<!doctype html>
 <html><body style="margin:0;overflow:hidden;background:transparent;user-select:none;-webkit-user-select:none">
 <style>
   #layer { position: fixed; inset: 0; }
+  /* Invisible click target — no visible ring/glow, but still catches the click. */
   .spot {
     position: absolute; width: 58px; height: 58px; margin: -29px 0 0 -29px;
-    border-radius: 999px; border: 1px solid rgba(110, 190, 255, 0.35);
-    background: transparent; cursor: pointer;
+    border-radius: 999px; border: 0; background: transparent; cursor: pointer;
   }
-  .spot:hover { border-color: rgba(110, 210, 255, 0.95); box-shadow: 0 0 16px rgba(110,210,255,0.45); }
   #menu {
     display: none; position: fixed; z-index: 2; min-width: 120px; padding: 6px;
     border-radius: 10px; border: 1px solid rgba(110, 180, 255, 0.4);
@@ -246,8 +247,22 @@ const HIT_HTML: &str = r##"<!doctype html>
 (() => {
   const layer = document.getElementById("layer");
   const menu = document.getElementById("menu");
-  let points = [], selected = "";
+  let points = [], selected = "", menuOpen = false;
   const post = (m) => { try { window.ipc.postMessage(m); } catch {} };
+  function openMenu(x, y) {
+    menu.style.display = "block";
+    menu.style.left = Math.min(window.innerWidth - 130, x + 24) + "px";
+    menu.style.top = Math.min(window.innerHeight - 90, y - 8) + "px";
+    menuOpen = true;
+    post("menu-open");
+  }
+  function closeMenu() {
+    if (menuOpen) {
+      menu.style.display = "none";
+      menuOpen = false;
+      post("menu-close");
+    }
+  }
   function draw() {
     layer.innerHTML = "";
     const pairs = [];
@@ -263,13 +278,15 @@ const HIT_HTML: &str = r##"<!doctype html>
       s.onclick = (e) => {
         e.stopPropagation();
         selected = p.id || "";
-        menu.style.display = "block";
-        menu.style.left = Math.min(window.innerWidth - 130, x + 24) + "px";
-        menu.style.top = Math.min(window.innerHeight - 90, y - 8) + "px";
+        // Tell the renderer to stop this character and zoom the camera in.
+        if (selected) { try { fetch("http://127.0.0.1:8787/focus?id=" + encodeURIComponent(selected), { cache: "no-store" }); } catch {} }
+        openMenu(x, y);
       };
       layer.appendChild(s);
     }
-    post("hotspots:" + pairs.join("|"));
+    // While the menu is open the window region is intentionally un-clipped; don't
+    // re-post spot circles or the poll tick would re-clip and hide the menu.
+    if (!menuOpen) post("hotspots:" + pairs.join("|"));
   }
   function apply(src) {
     points = (src || [])
@@ -294,11 +311,11 @@ const HIT_HTML: &str = r##"<!doctype html>
   }
   document.getElementById("talk").onclick = () => {
     if (selected) post("agent-talk:" + selected);
-    menu.style.display = "none";
+    closeMenu();
   };
-  document.getElementById("back").onclick = () => { post("agent-back"); menu.style.display = "none"; };
+  document.getElementById("back").onclick = () => { post("agent-back"); closeMenu(); };
   window.addEventListener("resize", draw);
-  document.addEventListener("mousedown", (e) => { if (!e.target.closest("#menu")) menu.style.display = "none"; });
+  document.addEventListener("mousedown", (e) => { if (!e.target.closest("#menu")) closeMenu(); });
   wire();
 })();
 </script>
@@ -1302,6 +1319,16 @@ mod platform {
         }
     }
 
+    // Drop any window region so the ENTIRE window is clickable again. Used while the
+    // hit layer's popup menu is open — the menu is drawn outside the tight spot
+    // circles, so it would be clipped away (invisible + unclickable) otherwise.
+    pub fn region_full(window: &Window) {
+        let hwnd = window.hwnd() as HWND;
+        unsafe {
+            SetWindowRgn(hwnd, 0 as _, 1);
+        }
+    }
+
     pub fn set_feed_alpha(window: &Window, feed: bool) {
         unsafe {
             let hwnd = window.hwnd() as HWND;
@@ -1768,6 +1795,7 @@ mod platform {
         round_corners(window, d / 2.0);
     }
     pub fn region_hotspots(_window: &Window, _pts: &[(i32, i32)], _radius: i32) {}
+    pub fn region_full(_window: &Window) {}
 
     pub fn set_feed_alpha(window: &Window, feed: bool) {
         unsafe {
@@ -2020,6 +2048,7 @@ mod platform {
     pub fn region_round(_w: &Window, _a: f64, _b: f64, _r: f64) {}
     pub fn region_circle(_w: &Window, _d: f64) {}
     pub fn region_hotspots(_w: &Window, _pts: &[(i32, i32)], _radius: i32) {}
+    pub fn region_full(_w: &Window) {}
     pub fn set_feed_alpha(_w: &Window, _f: bool) {}
     pub fn webview_extras<'a>(b: wry::WebViewBuilder<'a>) -> wry::WebViewBuilder<'a> { b }
     pub fn is_autostart() -> bool { false }
@@ -2333,6 +2362,8 @@ fn main() {
                 s if s.starts_with("agent-talk:") =>
                     p_hit.send_event(UserEvent::HitTalk(s[11..].to_string())),
                 "agent-back" => p_hit.send_event(UserEvent::HitBack),
+                "menu-open" => p_hit.send_event(UserEvent::HitMenuOpen),
+                "menu-close" => p_hit.send_event(UserEvent::HitMenuClose),
                 _ => Ok(()),
             };
         })
@@ -2387,6 +2418,10 @@ fn main() {
     let mut feed = false;
     let mut current_target = String::from("ceo");
     let mut previous_target = String::from("ceo");
+    // Physical-pixel spot circles most recently reported by the hit layer, so the
+    // popup menu can temporarily un-clip the window and then restore them.
+    #[cfg(target_os = "windows")]
+    let mut hit_pts: Vec<(i32, i32)> = Vec::new();
     let mut editor_pid: u32 = 0;
     let mut world_ready = false;
     // Tracks whether the wallpaper is believed visible (30 fps) vs throttled
@@ -2699,16 +2734,34 @@ fn main() {
                 UserEvent::HitHotspots(raw) => {
                     #[cfg(target_os = "windows")]
                     {
+                        // The JS reports CSS (logical) pixels; SetWindowRgn wants
+                        // physical client pixels, so scale by the layer's DPI factor
+                        // or the circles land in the wrong place on scaled displays.
+                        let sf = hit_layer.scale_factor();
                         let mut pts: Vec<(i32, i32)> = Vec::new();
                         for pair in raw.split('|') {
                             let mut it = pair.split(',');
-                            let x = it.next().and_then(|v| v.parse::<i32>().ok());
-                            let y = it.next().and_then(|v| v.parse::<i32>().ok());
+                            let x = it.next().and_then(|v| v.parse::<f64>().ok());
+                            let y = it.next().and_then(|v| v.parse::<f64>().ok());
                             if let (Some(px), Some(py)) = (x, y) {
-                                pts.push((px, py));
+                                pts.push(((px * sf) as i32, (py * sf) as i32));
                             }
                         }
-                        platform::region_hotspots(&hit_layer, &pts, 30);
+                        hit_pts = pts;
+                        let radius = (30.0 * sf) as i32;
+                        platform::region_hotspots(&hit_layer, &hit_pts, radius);
+                    }
+                }
+                UserEvent::HitMenuOpen => {
+                    #[cfg(target_os = "windows")]
+                    platform::region_full(&hit_layer);
+                }
+                UserEvent::HitMenuClose => {
+                    #[cfg(target_os = "windows")]
+                    {
+                        let sf = hit_layer.scale_factor();
+                        let radius = (30.0 * sf) as i32;
+                        platform::region_hotspots(&hit_layer, &hit_pts, radius);
                     }
                 }
                 UserEvent::HitTalk(id) => {

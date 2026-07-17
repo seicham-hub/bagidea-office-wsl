@@ -16,6 +16,7 @@ var _t := 0.0
 var _focus_node: Node3D = null
 var _focus_until := 0.0
 var _focus_w := 0.0
+var _focus_zoom := 21.0   # camera distance while focusing (smaller = tighter)
 
 @onready var _cam: Camera3D = $Camera3D
 
@@ -26,11 +27,12 @@ func _ready() -> void:
 
 ## Ask the camera to visit something interesting for a few seconds.
 ## Callers rate-limit; the rig just performs the move.
-func focus_on(node: Node3D, dur := 7.0) -> void:
+func focus_on(node: Node3D, dur := 7.0, zoom := 21.0) -> void:
 	if node == null or not is_instance_valid(node):
 		return
 	_focus_node = node
 	_focus_until = Time.get_ticks_msec() / 1000.0 + dur
+	_focus_zoom = zoom
 
 ## Is a close-up currently playing? Lets callers fire a "guaranteed" focus on
 ## a fresh order only when the camera is otherwise idle (no event running).
@@ -65,4 +67,4 @@ func _process(delta: float) -> void:
 	var k := smoothstep(0.0, 1.0, _focus_w)
 	var fp: Vector3 = _focus_node.global_position
 	position = drift_pos.lerp(Vector3(fp.x, fp.y + 0.35, fp.z), k)
-	_cam.position.z = lerpf(drift_z, 21.0, k)
+	_cam.position.z = lerpf(drift_z, _focus_zoom, k)

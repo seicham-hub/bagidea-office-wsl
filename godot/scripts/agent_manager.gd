@@ -99,7 +99,10 @@ func _stream_positions() -> void:
 			var item := {"id": id, "x": a.node.position.x, "z": a.node.position.z,
 				"state": a.state}
 			if has_cam:
-				var head := a.node.global_position + Vector3(0.0, 1.15, 0.0)
+				# Aim the click hotspot at the character's BODY (node sits at y≈0.86,
+				# the sprite's mid-body), not the nameplate/speech bubble floating
+				# above the head — so clicking the character itself talks to them.
+				var head: Vector3 = a.node.global_position + Vector3(0.0, 0.3, 0.0)
 				if not cam.is_position_behind(head):
 					var sp := cam.unproject_position(head)
 					item["sx"] = clampf(sp.x / vsize.x, 0.0, 1.0)
@@ -108,7 +111,7 @@ func _stream_positions() -> void:
 	if is_instance_valid(ceo) and not agents.has("ceo"):
 		var ceo_item := {"id": "ceo", "x": ceo.position.x, "z": ceo.position.z, "state": "idle"}
 		if has_cam:
-			var chead := ceo.global_position + Vector3(0.0, 1.15, 0.0)
+			var chead := ceo.global_position + Vector3(0.0, 0.3, 0.0)
 			if not cam.is_position_behind(chead):
 				var csp := cam.unproject_position(chead)
 				ceo_item["sx"] = clampf(csp.x / vsize.x, 0.0, 1.0)
@@ -120,7 +123,7 @@ func _stream_positions() -> void:
 			var gitem := {"id": sub, "x": gh.node.position.x, "z": gh.node.position.z,
 				"state": "ghost"}
 			if has_cam:
-				var ghead := gh.node.global_position + Vector3(0.0, 1.1, 0.0)
+				var ghead: Vector3 = gh.node.global_position + Vector3(0.0, 0.3, 0.0)
 				if not cam.is_position_behind(ghead):
 					var gsp := cam.unproject_position(ghead)
 					gitem["sx"] = clampf(gsp.x / vsize.x, 0.0, 1.0)
@@ -210,6 +213,29 @@ func _maybe_focus(node: Node3D, chance := 0.45, dur := 7.0) -> void:
 	if rig:
 		rig.focus_on(node, dur)
 
+## Wallpaper click on a character: stop it in place and glide the camera in for a
+## tight close-up (a few seconds), then it eases back and the agent resumes.
+func _focus_click(id: String) -> void:
+	if id == "":
+		return
+	var node: Node3D = null
+	if id == "ceo":
+		node = ceo
+	elif agents.has(id) and is_instance_valid(agents[id].get("node")):
+		node = agents[id].node
+	if not is_instance_valid(node):
+		return
+	var dur := 9.0
+	if node.has_method("hold"):
+		node.hold(dur)
+	if id == "ceo":
+		ceo_hold_until = Time.get_ticks_msec() / 1000.0 + dur
+	var rig := get_node_or_null("../CameraRig")
+	if rig and rig.has_method("focus_on"):
+		rig.focus_on(node, dur, 15.0)   # tighter zoom than ambient close-ups
+	# Don't let an ambient close-up immediately steal the shot back.
+	_focus_cd = Time.get_ticks_msec() / 1000.0 + dur
+
 ## Symbol FX (check / X / alert / thumbs / notes) play on the HUD layer —
 ## ABOVE the nameplate that was eating the in-world version. Body bursts
 ## (sparkle, light, warp, heart) stay in the 3D world via Fx.spawn.
@@ -259,6 +285,9 @@ func handle(evt: Dictionary) -> void:
 		return
 	if type == "world.pos":
 		return  # our own position stream echoing back — not an agent event
+	if type == "world.focus":
+		_focus_click(str(evt.get("agent", "")))
+		return
 	if type == "task.reset":
 		# Daemon (re)started → nothing is running. Clear every stale "working" state so the
 		# wallpaper stops showing ghosts of tasks the restart already killed (a replayed
