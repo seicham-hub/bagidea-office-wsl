@@ -218,7 +218,7 @@ const ORB_HTML: &str = r#"<!doctype html>
 </script>
 </body></html>"#;
 
-const HIT_HTML: &str = r#"<!doctype html>
+const HIT_HTML: &str = r##"<!doctype html>
 <html><body style="margin:0;overflow:hidden;background:transparent;user-select:none;-webkit-user-select:none">
 <style>
   #layer { position: fixed; inset: 0; }
@@ -274,7 +274,7 @@ const HIT_HTML: &str = r#"<!doctype html>
   function apply(src) {
     points = (src || [])
       .filter((a) => a && typeof a.sx === "number" && typeof a.sy === "number")
-      .filter((a) => !String(a.id || "").includes("#"))
+      .filter((a) => !String(a.id || "").includes('#'))
       .filter((a) => a.sx >= 0 && a.sx <= 1 && a.sy >= 0 && a.sy <= 1)
       .map((a) => ({ id: String(a.id || ""), x: a.sx, y: a.sy }));
     draw();
@@ -302,7 +302,7 @@ const HIT_HTML: &str = r#"<!doctype html>
   wire();
 })();
 </script>
-</body></html>"#;
+</body></html>"##;
 
 // The orb's logo is EMBEDDED in the binary as a data: URI rather than fetched from the
 // daemon over HTTP. On a cold boot the shell paints the orb before the daemon's web
