@@ -102,6 +102,7 @@ enum UserEvent {
     Toggle,
     DragOrb,
     DragOverlay,
+    DragResize(String), // frameless overlay edge/corner: n|s|e|w|ne|nw|se|sw
     HideOverlay,
     MiniToggle,
     FeedToggle,
@@ -118,7 +119,7 @@ enum UserEvent {
     HitHotspots(String),               // x,y|x,y|...
     HitTalk(String),                   // talk to this agent id
     HitBack,                           // return to previous chat target
-    HitMenuOpen,                       // popup menu shown → make whole layer clickable
+    HitMenuOpen(String),               // popup menu shown → "x,y,w,h" CSS px (spot+menu region)
     HitMenuClose,                      // popup menu dismissed → back to spot circles
 }
 
@@ -255,7 +256,13 @@ const HIT_HTML: &str = r##"<!doctype html>
     menu.style.left = Math.min(window.innerWidth - 130, x + 24) + "px";
     menu.style.top = Math.min(window.innerHeight - 90, y - 8) + "px";
     menuOpen = true;
-    post("menu-open");
+    // Tell the shell the menu rect so it can OR it into SetWindowRgn — never
+    // un-clip the whole fullscreen layer (that painted white over Chrome and
+    // ate scroll/click for every app underneath).
+    requestAnimationFrame(() => {
+      const r = menu.getBoundingClientRect();
+      post("menu-open:" + [r.left, r.top, r.width, r.height].map((n) => Math.round(n)).join(","));
+    });
   }
   function closeMenu() {
     if (menuOpen) {
@@ -264,6 +271,9 @@ const HIT_HTML: &str = r##"<!doctype html>
       post("menu-close");
     }
   }
+  // Shell calls this when a click landed outside the clipped region (so we
+  // never received the DOM mousedown) — e.g. user clicked a browser instead.
+  window.__hitCloseMenu = closeMenu;
   function draw() {
     layer.innerHTML = "";
     const pairs = [];
@@ -531,7 +541,7 @@ mod platform {
         IsWindowVisible, SendMessageTimeoutW, SetLayeredWindowAttributes, SetParent,
         SetWindowLongW, ShowWindow, SystemParametersInfoW, GA_PARENT, GWL_EXSTYLE, LWA_ALPHA,
         SMTO_NORMAL, SPI_SETDESKWALLPAPER, SW_HIDE, SW_SHOW, WS_EX_LAYERED,
-        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
     };
     use std::io::Write;
 
@@ -1299,35 +1309,117 @@ mod platform {
         }
     }
 
-    pub fn region_hotspots(window: &Window, pts: &[(i32, i32)], radius: i32) {
+    /// Clip the hit layer to hotspot ellipses, optionally OR'd with a menu
+    /// rectangle (physical client px). An empty set yields a zero region —
+    /// callers should also park the window off-screen so a fullscreen
+    /// topmost WebView2 can't occlude Chrome (white page + dead scroll).
+    pub fn region_hotspots(
+        window: &Window,
+        pts: &[(i32, i32)],
+        radius: i32,
+        menu: Option<(i32, i32, i32, i32)>,
+    ) {
         use windows_sys::Win32::Graphics::Gdi::{CombineRgn, DeleteObject, RGN_OR};
         let hwnd = window.hwnd() as HWND;
         unsafe {
-            if pts.is_empty() {
-                let rgn = CreateRectRgn(0, 0, 0, 0);
-                SetWindowRgn(hwnd, rgn, 1);
-                return;
-            }
-            let first = pts[0];
-            let mut base = CreateEllipticRgn(
-                first.0 - radius, first.1 - radius, first.0 + radius + 1, first.1 + radius + 1);
-            for (x, y) in pts.iter().skip(1) {
-                let r = CreateEllipticRgn(x - radius, y - radius, x + radius + 1, y + radius + 1);
-                CombineRgn(base, base, r, RGN_OR);
-                DeleteObject(r as _);
+            let mut base = if pts.is_empty() {
+                CreateRectRgn(0, 0, 0, 0)
+            } else {
+                let first = pts[0];
+                let b = CreateEllipticRgn(
+                    first.0 - radius, first.1 - radius, first.0 + radius + 1, first.1 + radius + 1);
+                for (x, y) in pts.iter().skip(1) {
+                    let r = CreateEllipticRgn(x - radius, y - radius, x + radius + 1, y + radius + 1);
+                    CombineRgn(b, b, r, RGN_OR);
+                    DeleteObject(r as _);
+                }
+                b
+            };
+            if let Some((x, y, w, h)) = menu {
+                if w > 0 && h > 0 {
+                    let r = CreateRectRgn(x, y, x + w + 1, y + h + 1);
+                    CombineRgn(base, base, r, RGN_OR);
+                    DeleteObject(r as _);
+                }
             }
             SetWindowRgn(hwnd, base, 1);
         }
     }
 
-    // Drop any window region so the ENTIRE window is clickable again. Used while the
-    // hit layer's popup menu is open — the menu is drawn outside the tight spot
-    // circles, so it would be clipped away (invisible + unclickable) otherwise.
-    pub fn region_full(window: &Window) {
-        let hwnd = window.hwnd() as HWND;
-        unsafe {
-            SetWindowRgn(hwnd, 0 as _, 1);
+    // The office characters live on the WALLPAPER — behind every window. The hit
+    // layer, though, is always-on-top, so a hotspot circle over a character would
+    // steal the click even when Chrome / VS Code / any app is drawn OVER that spot.
+    // `wallpaper_hotspots` keeps only spots where the wallpaper (or our Godot world)
+    // is what's actually on top.
+    struct WallScan { x: i32, y: i32, self_pid: u32, world_pid: u32, over_wallpaper: bool }
+
+    unsafe extern "system" fn wall_scan_proc(hwnd: HWND, lparam: LPARAM) -> i32 {
+        use windows_sys::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+        let s = &mut *(lparam as *mut WallScan);
+        if IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0 { return 1; }
+        let mut cloaked: u32 = 0;
+        if DwmGetWindowAttribute(
+            hwnd, DWMWA_CLOAKED as u32,
+            &mut cloaked as *mut u32 as *mut core::ffi::c_void, 4) == 0 && cloaked != 0
+        {
+            return 1;
         }
+        let mut rc: RECT = core::mem::zeroed();
+        if GetWindowRect(hwnd, &mut rc) == 0 { return 1; }
+        if !(s.x >= rc.left && s.x < rc.right && s.y >= rc.top && s.y < rc.bottom) {
+            return 1;
+        }
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        // Shell chrome (hit layer / orb / chat) never counts as coverage.
+        if pid == s.self_pid { return 1; }
+        // Godot world IS the wallpaper content (embedded in WorkerW, or briefly
+        // top-level during re-parent). Treat it as clickable wallpaper.
+        if s.world_pid != 0 && pid == s.world_pid {
+            s.over_wallpaper = true;
+            return 0;
+        }
+        let ex = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+        if ex & WS_EX_TRANSPARENT != 0 { return 1; }
+        let mut buf = [0u16; 64];
+        let n = GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
+        let name = String::from_utf16_lossy(&buf[..n.max(0) as usize]);
+        s.over_wallpaper = matches!(name.as_str(), "WorkerW" | "Progman");
+        0
+    }
+
+    /// Keep only the hotspots whose pixel currently shows the desktop wallpaper
+    /// (no app window on top). Input/output are physical CLIENT pixels of a
+    /// fullscreen hit layer intended to sit at on-screen (0,0).
+    pub fn wallpaper_hotspots(window: &Window, pts: &[(i32, i32)]) -> Vec<(i32, i32)> {
+        use windows_sys::Win32::System::Threading::GetCurrentProcessId;
+        if pts.is_empty() { return Vec::new(); }
+        let hwnd = window.hwnd() as HWND;
+        let self_pid = unsafe { GetCurrentProcessId() };
+        let world_pid = live_world_pid(0);
+        // Spots are authored for the on-screen fullscreen layer. If we currently
+        // parked the HWND off-screen, ClientToScreen would map them into the void
+        // and EVERY spot would fail the wallpaper test — permanently un-clickable.
+        // So always map through the on-screen origin we use when the layer is shown.
+        let (ox, oy) = unsafe {
+            let mut rc: RECT = core::mem::zeroed();
+            if GetWindowRect(hwnd, &mut rc) != 0 && rc.left > -1000 && rc.top > -1000 {
+                (rc.left, rc.top)
+            } else {
+                (0, 0)
+            }
+        };
+        let mut out = Vec::with_capacity(pts.len());
+        unsafe {
+            for &(cx, cy) in pts {
+                let mut scan = WallScan {
+                    x: ox + cx, y: oy + cy, self_pid, world_pid, over_wallpaper: false,
+                };
+                EnumWindows(Some(wall_scan_proc), &mut scan as *mut _ as LPARAM);
+                if scan.over_wallpaper { out.push((cx, cy)); }
+            }
+        }
+        out
     }
 
     pub fn set_feed_alpha(window: &Window, feed: bool) {
@@ -1795,8 +1887,13 @@ mod platform {
     pub fn region_circle(window: &Window, d: f64) {
         round_corners(window, d / 2.0);
     }
-    pub fn region_hotspots(_window: &Window, _pts: &[(i32, i32)], _radius: i32) {}
-    pub fn region_full(_window: &Window) {}
+    pub fn region_hotspots(
+        _window: &Window,
+        _pts: &[(i32, i32)],
+        _radius: i32,
+        _menu: Option<(i32, i32, i32, i32)>,
+    ) {
+    }
 
     pub fn set_feed_alpha(window: &Window, feed: bool) {
         unsafe {
@@ -2048,8 +2145,13 @@ mod platform {
     pub fn suppress_nc(_w: &Window) {}
     pub fn region_round(_w: &Window, _a: f64, _b: f64, _r: f64) {}
     pub fn region_circle(_w: &Window, _d: f64) {}
-    pub fn region_hotspots(_w: &Window, _pts: &[(i32, i32)], _radius: i32) {}
-    pub fn region_full(_w: &Window) {}
+    pub fn region_hotspots(
+        _w: &Window,
+        _pts: &[(i32, i32)],
+        _radius: i32,
+        _menu: Option<(i32, i32, i32, i32)>,
+    ) {
+    }
     pub fn set_feed_alpha(_w: &Window, _f: bool) {}
     pub fn webview_extras<'a>(b: wry::WebViewBuilder<'a>) -> wry::WebViewBuilder<'a> { b }
     pub fn is_autostart() -> bool { false }
@@ -2332,6 +2434,10 @@ fn main() {
     let overlay = chrome_window(
         &event_loop, "BagIdea Office", FULL.0, FULL.1, PARK.0, PARK.1, app_icon(), false,
     );
+    // Frameless, but still user-resizable — edges/corners are driven from the
+    // overlay HTML via drag_resize_window (no native title-bar grip).
+    overlay.set_resizable(true);
+    overlay.set_min_inner_size(Some(LogicalSize::new(320.0, 360.0)));
     overlay.set_outer_position(LogicalPosition::new(PARK.0, PARK.1));
     let overlay_id = overlay.id();
     let p_overlay = proxy.clone();
@@ -2344,6 +2450,8 @@ fn main() {
                     "drag-overlay" => p_overlay.send_event(UserEvent::DragOverlay),
                     "hide" => p_overlay.send_event(UserEvent::HideOverlay),
                     "mini" => p_overlay.send_event(UserEvent::MiniToggle),
+                    s if s.starts_with("resize:") =>
+                        p_overlay.send_event(UserEvent::DragResize(s[7..].to_string())),
                     s if s.starts_with("hotkey:") =>
                         p_overlay.send_event(UserEvent::SetHotkey(s[7..].to_string())),
                     s if s.starts_with("open-window:") =>
@@ -2372,7 +2480,7 @@ fn main() {
     #[cfg(target_os = "windows")]
     let p_hit = proxy.clone();
     #[cfg(target_os = "windows")]
-    let _hit_view = WebViewBuilder::new()
+    let hit_view = WebViewBuilder::new()
         .with_transparent(true)
         .with_html(HIT_HTML)
         .with_ipc_handler(move |req| {
@@ -2382,7 +2490,8 @@ fn main() {
                 s if s.starts_with("agent-talk:") =>
                     p_hit.send_event(UserEvent::HitTalk(s[11..].to_string())),
                 "agent-back" => p_hit.send_event(UserEvent::HitBack),
-                "menu-open" => p_hit.send_event(UserEvent::HitMenuOpen),
+                s if s.starts_with("menu-open:") =>
+                    p_hit.send_event(UserEvent::HitMenuOpen(s[10..].to_string())),
                 "menu-close" => p_hit.send_event(UserEvent::HitMenuClose),
                 _ => Ok(()),
             };
@@ -2390,7 +2499,10 @@ fn main() {
         .build(&hit_layer)
         .expect("hit layer webview");
     #[cfg(target_os = "windows")]
-    platform::region_hotspots(&hit_layer, &[], 30);
+    platform::region_hotspots(&hit_layer, &[], 30, None);
+    // Parked until there is a wallpaper-visible hotspot — a fullscreen topmost
+    // WebView2 at (0,0) occludes Chrome (white page + no scroll) even with an
+    // empty SetWindowRgn on some DWM/WebView2 builds.
     #[cfg(target_os = "windows")]
     hit_layer.set_outer_position(LogicalPosition::new(PARK.0, PARK.1 + 420.0));
 
@@ -2436,12 +2548,45 @@ fn main() {
     let mut popups: Vec<(tao::window::WindowId, String, Window, wry::WebView)> = Vec::new();
     let mut mini = false;
     let mut feed = false;
+    // Last non-mini overlay size the user settled on (drag-resize or default FULL).
+    // Mini restore and leaving feed mode come back here instead of hard FULL.
+    let mut overlay_size = FULL;
     let mut current_target = String::from("ceo");
     let mut previous_target = String::from("ceo");
-    // Physical-pixel spot circles most recently reported by the hit layer, so the
-    // popup menu can temporarily un-clip the window and then restore them.
+    // Physical-pixel spot circles most recently reported by the hit layer.
     #[cfg(target_os = "windows")]
     let mut hit_pts: Vec<(i32, i32)> = Vec::new();
+    // Subset of hit_pts on currently-visible wallpaper (no app covering them).
+    #[cfg(target_os = "windows")]
+    let mut hit_visible: Vec<(i32, i32)> = Vec::new();
+    // Popup menu rect in physical client px while open (OR'd into the region).
+    #[cfg(target_os = "windows")]
+    let mut hit_menu_rect: Option<(i32, i32, i32, i32)> = None;
+    #[cfg(target_os = "windows")]
+    let mut hit_lbutton_down = false;
+    // Ignore "click outside" until the opening click is fully released — otherwise
+    // the same mouse-down that opened the menu immediately closes it again.
+    #[cfg(target_os = "windows")]
+    let mut hit_menu_grace_until = std::time::Instant::now();
+    // Apply hotspot(+menu) region and park/unpark the fullscreen hit layer so it
+    // never sits on-screen with nothing interactive (Chrome white-out / dead scroll).
+    #[cfg(target_os = "windows")]
+    let apply_hit_region = |
+        hit_layer: &Window,
+        visible: &[(i32, i32)],
+        menu: Option<(i32, i32, i32, i32)>,
+        office_hidden: bool,
+    | {
+        let sf = hit_layer.scale_factor();
+        let radius = (55.0 * sf) as i32;
+        platform::region_hotspots(hit_layer, visible, radius, menu);
+        let need_on_screen = !office_hidden && (!visible.is_empty() || menu.is_some());
+        if need_on_screen {
+            hit_layer.set_outer_position(LogicalPosition::new(0.0, 0.0));
+        } else {
+            hit_layer.set_outer_position(LogicalPosition::new(PARK.0, PARK.1 + 420.0));
+        }
+    };
     let mut editor_pid: u32 = 0;
     let mut world_ready = false;
     // Tracks whether the wallpaper is believed visible (30 fps) vs throttled
@@ -2488,6 +2633,53 @@ fn main() {
             // manual tray "Hide office" toggle throttles.
         }
 
+        // Coverage follow-up (~4 Hz): a window can be dragged over a stationary
+        // character between position polls, so re-check which hotspots still sit on
+        // visible wallpaper and re-clip only when the set changed. Skipped while the
+        // popup menu is open (menu rect is pinned into the region) or the office is
+        // hidden. Cheap: a handful of points, each a short top-level EnumWindows.
+        #[cfg(target_os = "windows")]
+        if world_ready && !hide_item.is_checked() && hit_menu_rect.is_none() && !hit_pts.is_empty() {
+            let vis = platform::wallpaper_hotspots(&hit_layer, &hit_pts);
+            if vis != hit_visible {
+                hit_visible = vis;
+                apply_hit_region(&hit_layer, &hit_visible, None, false);
+            }
+        }
+        // Menu is clipped to its rect only — clicks outside never reach the
+        // WebView, so close it from the OS cursor when the user presses elsewhere.
+        #[cfg(target_os = "windows")]
+        if let Some(menu) = hit_menu_rect {
+            use windows_sys::Win32::Foundation::POINT;
+            use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+            use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+            let down = unsafe { GetAsyncKeyState(VK_LBUTTON as i32) as u16 & 0x8000 != 0 };
+            if down && !hit_lbutton_down && std::time::Instant::now() >= hit_menu_grace_until {
+                let mut pt = POINT { x: 0, y: 0 };
+                if unsafe { GetCursorPos(&mut pt) } != 0 {
+                    if let Ok(origin) = hit_layer.outer_position() {
+                        let cx = pt.x - origin.x;
+                        let cy = pt.y - origin.y;
+                        let (mx, my, mw, mh) = menu;
+                        let in_menu = cx >= mx && cy >= my && cx < mx + mw && cy < my + mh;
+                        let radius = (55.0 * hit_layer.scale_factor()) as i32;
+                        let in_spot = hit_visible.iter().any(|&(x, y)| {
+                            let dx = cx - x;
+                            let dy = cy - y;
+                            dx * dx + dy * dy <= radius * radius
+                        });
+                        if !in_menu && !in_spot {
+                            let _ = hit_view.evaluate_script(
+                                "window.__hitCloseMenu && window.__hitCloseMenu()");
+                        }
+                    }
+                }
+            }
+            hit_lbutton_down = down;
+        } else {
+            hit_lbutton_down = false;
+        }
+
         let mut shutdown = false;
         let mut toggle = false;
 
@@ -2504,13 +2696,19 @@ fn main() {
                     overlay.set_outer_position(LogicalPosition::new(PARK.0, PARK.1));
                     orb.set_outer_position(LogicalPosition::new(PARK.0, PARK.1 + 200.0));
                     #[cfg(target_os = "windows")]
-                    hit_layer.set_outer_position(LogicalPosition::new(PARK.0, PARK.1 + 420.0));
+                    {
+                        hit_menu_rect = None;
+                        apply_hit_region(&hit_layer, &[], None, true);
+                    }
                     daemon_get("/focus");   // clear any close-up when hiding the office
                 } else {
                     orb.set_outer_position(LogicalPosition::new(orb_x, orb_y));
                     raise_orb(&orb);
                     #[cfg(target_os = "windows")]
-                    hit_layer.set_outer_position(LogicalPosition::new(0.0, 0.0));
+                    {
+                        hit_visible = platform::wallpaper_hotspots(&hit_layer, &hit_pts);
+                        apply_hit_region(&hit_layer, &hit_visible, None, false);
+                    }
                 }
                 vis_on = !hidden;
                 post_visibility(!hidden);
@@ -2571,10 +2769,25 @@ fn main() {
                     raise_orb(&orb);
                 }
             }
-            Event::WindowEvent { window_id, event: WindowEvent::Resized(_), .. } => {
+            Event::WindowEvent { window_id, event: WindowEvent::Resized(size), .. } => {
                 if window_id == overlay_id {
-                    let (w, h) = if feed { (FEED_W, feed_h) } else if mini { MINI } else { FULL };
-                    platform::region_round(&overlay, w, h, if feed { 14.0 } else { 18.0 });
+                    let sf = overlay.scale_factor();
+                    let ls: LogicalSize<f64> = size.to_logical(sf);
+                    let (w, h) = (ls.width, ls.height);
+                    if feed {
+                        platform::region_round(&overlay, FEED_W, feed_h, 14.0);
+                    } else {
+                        platform::region_round(&overlay, w, h, 18.0);
+                        // Remember free-size so mini/feed restore come back here.
+                        // Mini mode itself is a fixed snap — don't overwrite it.
+                        let near_mini = (w - MINI.0).abs() < 8.0 && (h - MINI.1).abs() < 8.0;
+                        if !near_mini {
+                            overlay_size = (w, h);
+                            mini = false;
+                        } else {
+                            mini = true;
+                        }
+                    }
                 } else if window_id == orb_id {
                     // Re-clip the orb to its circle on any DPI / monitor change so the
                     // transparent corners keep falling through to the desktop.
@@ -2596,7 +2809,8 @@ fn main() {
                     }
                     #[cfg(target_os = "windows")]
                     if !hide_item.is_checked() {
-                        hit_layer.set_outer_position(LogicalPosition::new(0.0, 0.0));
+                        hit_visible = platform::wallpaper_hotspots(&hit_layer, &hit_pts);
+                        apply_hit_region(&hit_layer, &hit_visible, hit_menu_rect, false);
                     }
                 }
                 UserEvent::EditorOpening => {
@@ -2622,10 +2836,22 @@ fn main() {
                 }
                 UserEvent::MiniToggle => {
                     if !feed {
-                        mini = !mini;
-                        let (w, h) = if mini { MINI } else { FULL };
-                        overlay.set_inner_size(LogicalSize::new(w, h));
-                        platform::region_round(&overlay, w, h, 18.0);
+                        if !mini {
+                            // Entering mini: remember the current free size first.
+                            let sf = overlay.scale_factor();
+                            let ls: LogicalSize<f64> = overlay.inner_size().to_logical(sf);
+                            if (ls.width - MINI.0).abs() > 8.0 || (ls.height - MINI.1).abs() > 8.0 {
+                                overlay_size = (ls.width, ls.height);
+                            }
+                            mini = true;
+                            overlay.set_inner_size(LogicalSize::new(MINI.0, MINI.1));
+                            platform::region_round(&overlay, MINI.0, MINI.1, 18.0);
+                        } else {
+                            mini = false;
+                            let (w, h) = overlay_size;
+                            overlay.set_inner_size(LogicalSize::new(w, h));
+                            platform::region_round(&overlay, w, h, 18.0);
+                        }
                         raise_orb(&orb);
                     }
                 }
@@ -2640,7 +2866,7 @@ fn main() {
                         overlay.set_outer_position(LogicalPosition::new(feed_x, feed_y));
                         platform::region_round(&overlay, FEED_W, feed_h, 14.0);
                     } else {
-                        let (w, h) = if mini { MINI } else { FULL };
+                        let (w, h) = if mini { MINI } else { overlay_size };
                         overlay.set_inner_size(LogicalSize::new(w, h));
                         overlay.set_outer_position(LogicalPosition::new(overlay_x, overlay_y));
                         platform::region_round(&overlay, w, h, 18.0);
@@ -2649,6 +2875,19 @@ fn main() {
                 }
                 UserEvent::DragOrb => { let _ = orb.drag_window(); }
                 UserEvent::DragOverlay => { let _ = overlay.drag_window(); }
+                UserEvent::DragResize(dir) => {
+                    use tao::window::ResizeDirection::*;
+                    let d = match dir.as_str() {
+                        "n" => Some(North), "s" => Some(South),
+                        "e" => Some(East), "w" => Some(West),
+                        "ne" => Some(NorthEast), "nw" => Some(NorthWest),
+                        "se" => Some(SouthEast), "sw" => Some(SouthWest),
+                        _ => None,
+                    };
+                    if let Some(d) = d {
+                        let _ = overlay.drag_resize_window(d);
+                    }
+                }
                 UserEvent::PttKey(pressed) => {
                     // True hold-to-talk: key DOWN starts recording, key UP sends.
                     // (The low-level hook fires once per physical press/release.)
@@ -2773,20 +3012,48 @@ fn main() {
                             }
                         }
                         hit_pts = pts;
-                        let radius = (55.0 * sf) as i32;
-                        platform::region_hotspots(&hit_layer, &hit_pts, radius);
+                        // Only keep hotspots where the wallpaper is actually visible,
+                        // so a character hidden behind Chrome/etc. lets the click through.
+                        if hit_menu_rect.is_none() {
+                            hit_visible = platform::wallpaper_hotspots(&hit_layer, &hit_pts);
+                            apply_hit_region(
+                                &hit_layer, &hit_visible, None, hide_item.is_checked());
+                        }
                     }
                 }
-                UserEvent::HitMenuOpen => {
+                UserEvent::HitMenuOpen(raw) => {
                     #[cfg(target_os = "windows")]
-                    platform::region_full(&hit_layer);
+                    {
+                        // OR the menu rect into the region — never clear SetWindowRgn
+                        // (region_full made a fullscreen WebView2 that whitened Chrome).
+                        let sf = hit_layer.scale_factor();
+                        let mut parts = raw.split(',');
+                        let x = parts.next().and_then(|v| v.parse::<f64>().ok());
+                        let y = parts.next().and_then(|v| v.parse::<f64>().ok());
+                        let w = parts.next().and_then(|v| v.parse::<f64>().ok());
+                        let h = parts.next().and_then(|v| v.parse::<f64>().ok());
+                        hit_menu_rect = match (x, y, w, h) {
+                            (Some(x), Some(y), Some(w), Some(h)) if w > 0.0 && h > 0.0 =>
+                                Some(((x * sf) as i32, (y * sf) as i32,
+                                      (w * sf) as i32, (h * sf) as i32)),
+                            _ => None,
+                        };
+                        // Same physical click that opened the menu is still down —
+                        // don't treat it as "click outside".
+                        hit_lbutton_down = true;
+                        hit_menu_grace_until = std::time::Instant::now()
+                            + std::time::Duration::from_millis(400);
+                        apply_hit_region(
+                            &hit_layer, &hit_visible, hit_menu_rect, hide_item.is_checked());
+                    }
                 }
                 UserEvent::HitMenuClose => {
                     #[cfg(target_os = "windows")]
                     {
-                        let sf = hit_layer.scale_factor();
-                        let radius = (55.0 * sf) as i32;
-                        platform::region_hotspots(&hit_layer, &hit_pts, radius);
+                        hit_menu_rect = None;
+                        hit_visible = platform::wallpaper_hotspots(&hit_layer, &hit_pts);
+                        apply_hit_region(
+                            &hit_layer, &hit_visible, None, hide_item.is_checked());
                     }
                 }
                 UserEvent::HitTalk(id) => {

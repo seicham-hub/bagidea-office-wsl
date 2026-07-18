@@ -48,6 +48,19 @@
   .winbtn svg { width: 15px; height: 15px; display: block; }
   .winbtn:hover { background: rgba(94,200,255,0.25); border-color: var(--accent); }
   .winbtn.hide:hover { background: rgba(255,84,72,0.3); border-color: #ff5448; }
+
+  /* Frameless shell: invisible edge/corner grips so the user can drag-resize.
+     Feed mode has no chrome — hide the grips there. */
+  .rgrip { position: fixed; z-index: 9999; background: transparent; }
+  .rgrip.n  { top: 0; left: 10px; right: 10px; height: 6px; cursor: n-resize; }
+  .rgrip.s  { bottom: 0; left: 10px; right: 10px; height: 6px; cursor: s-resize; }
+  .rgrip.e  { top: 10px; right: 0; bottom: 10px; width: 6px; cursor: e-resize; }
+  .rgrip.w  { top: 10px; left: 0; bottom: 10px; width: 6px; cursor: w-resize; }
+  .rgrip.ne { top: 0; right: 0; width: 14px; height: 14px; cursor: ne-resize; }
+  .rgrip.nw { top: 0; left: 0; width: 14px; height: 14px; cursor: nw-resize; }
+  .rgrip.se { bottom: 0; right: 0; width: 16px; height: 16px; cursor: se-resize; }
+  .rgrip.sw { bottom: 0; left: 0; width: 14px; height: 14px; cursor: sw-resize; }
+  body.feedmode .rgrip { display: none !important; }
   /* "stop the agent to take over" pill — wider, labelled; arms on first click. */
   .winbtn.work { width: auto; padding: 0 9px; gap: 4px; font-size: 11px;
     background: rgba(94,200,255,0.18); border-color: rgba(94,200,255,0.5); color: #bfe6ff; }
@@ -5933,6 +5946,18 @@
       if (e.button === 0 && !e.target.closest("button") && !e.target.closest(".winbtn"))
         shellPost("drag-overlay");
     });
+    // Edge/corner grips → shell calls drag_resize_window (frameless has no OS border).
+    for (const dir of ["n", "s", "e", "w", "ne", "nw", "se", "sw"]) {
+      const g = document.createElement("div");
+      g.className = "rgrip " + dir;
+      g.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        shellPost("resize:" + dir);
+      });
+      document.body.appendChild(g);
+    }
     const miniBtn = document.getElementById("miniBtn");
     miniBtn.onclick = () => shellPost("mini");
     document.getElementById("hideBtn").onclick = () => shellPost("hide");
