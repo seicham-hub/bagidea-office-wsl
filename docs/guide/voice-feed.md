@@ -63,9 +63,9 @@ speech bubble for any of them, and **if that agent has a voice set**, it will so
   (so in practice they're spaced much further apart) · it **goes completely silent when a task is running or agents are talking to each other**
 - **When it's spoken aloud**: only for an agent that has a voice + TTS enabled, and it still has to pass a random roll
   (~60% of murmurs) before you hear it for real — otherwise it's just a silent bubble
-- **On/off**: there's no dedicated switch for ambient specifically — it uses the same switch as all office voices,
-  i.e. **⚙ → AGENTS → 🗣 Agent voices** · turning this off = no murmurs (just the text bubbles remain)
-- To make the office quieter overall, reduce how often agents gather to chat at **⚙ → AGENTS → ☕ SOCIAL**
+- **On/off (text + voice murmurs)**: **⚙ → AGENTS → 💬 Ambient murmurs** — turns off solo mood lines entirely (bubbles and TTS). Independent of ☕ SOCIAL
+- **Voice only**: **⚙ → AGENTS → 🗣 Agent voices** — keeps the text bubbles, stops the spoken part
+- To quiet group hangouts / brainstorms, reduce **⚙ → AGENTS → ☕ SOCIAL** (set 0 = off)
 
 ## 📡 Feed Mode — the event stream bar
 

@@ -632,7 +632,7 @@ Full reference: [`docs/guide/cli.md`](docs/guide/cli.md).
 | `GET /features` · `GET /stats` | feature gates · dashboard data |
 | `GET/POST /office-md` | shared OFFICE.md memory |
 | `GET /proposals` · `POST /proposals/respond` | team project pitches |
-| `POST /registry/tts` · `/registry/social` · `/registry/lang` | voice · social · language |
+| `POST /registry/tts` · `/registry/ambient` · `/registry/social` · `/registry/lang` | voice · ambient murmurs · social · language |
 | `POST /registry/key/test` | verify a main key works |
 | `GET /plugins` · `POST /plugins/reload` · `/plugin/<id>/...` | plugin host |
 | `GET/POST /layout` | Office Editor layout (→ `layout.changed`) |

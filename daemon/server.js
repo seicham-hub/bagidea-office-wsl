@@ -330,6 +330,7 @@ function rosterEvt() {
     heartbeatMin: Number(reg.heartbeatMin || 0),
     features: featuresMap(),
     tts: reg.tts !== false,
+    ambient: reg.ambient !== false,
     socialMin: Number(reg.socialMin !== undefined ? reg.socialMin : 60),
     proposalMin: Number(reg.proposalMin !== undefined ? reg.proposalMin : 120),
     maxStaff: MAX_STAFF,
@@ -4709,6 +4710,7 @@ function socialTick(now) {
 // a short spontaneous line (a mood, a quip) as a chat bubble — and if they have
 // a voice and TTS is available, they actually say it out loud. Low chance per
 // 30s tick so it stays a sprinkle of flavour, never a stream.
+// Toggle: reg.ambient (⚙ → AGENTS → Ambient murmurs); default on.
 const MOOD_LINES = {
   th: [
     "วันนี้อยากทำงานจัง 💪",
@@ -4773,6 +4775,9 @@ const MOOD_LINES = {
 };
 let lastAmbient = Date.now();
 function ambientTick(now) {
+  // Office-wide mute for solo mood lines (⚙ → AGENTS → Ambient murmurs).
+  // Independent of SOCIAL — turning this off does not stop group banter/proposals.
+  if (reg.ambient === false) return;
   if (activeDiscussions > 0 || agentBusy.size > 0) return;
   if (now - lastAmbient < 55 * 1000) return; // at most once every ~55s
   if (Math.random() > 0.45) return; // ...and only ~45% of those
@@ -9012,6 +9017,19 @@ end tell`;
     readBody(req, (body) => {
       try {
         reg.tts = !!JSON.parse(body).enabled;
+        saveReg();
+        pushRoster();
+        res.writeHead(200);
+        res.end("ok");
+      } catch {
+        res.writeHead(400);
+        res.end("bad json");
+      }
+    });
+  } else if (req.method === "POST" && req.url === "/registry/ambient") {
+    readBody(req, (body) => {
+      try {
+        reg.ambient = !!JSON.parse(body).enabled;
         saveReg();
         pushRoster();
         res.writeHead(200);

@@ -55,6 +55,7 @@ Central settings that control how "alive" the office feels — all under ⚙ →
 |---|---|---|
 | 🔊 Sound effects | Ambient sound in the world | On |
 | 🗣 Agent voices | Toggle agent speech across the whole office (needs a Gemini key) | On |
+| 💬 Ambient murmurs | Solo mood lines from idle agents (bubbles ± TTS). Independent of SOCIAL | On |
 | 🪟 Start with Windows | Open the office automatically at boot | Off |
 | 💓 DIRECTOR HEARTBEAT | How often the Director reviews the big picture and only flags what you should know | Every 60 min |
 | ☕ SOCIAL | Idle agents gather to chat / brainstorm | Every 60 min |

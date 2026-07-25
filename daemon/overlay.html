@@ -1288,7 +1288,7 @@
   let ROSTER = {}, REGROLES = [], REGSKILLS = {}, REGTOOLS = [], AUTOSKILLS = true, VERIFY = false;
   let BUILTIN_DESC = {}, REGMCP = {}, SOUND = true, HEARTBEAT = 0;
   let FEATURES = { openai: false, gemini: false, stt: false, tts: false, live: false, image: false };
-  let TTSON = true, SOCIALMIN = 60, MAXSTAFF = 18, PROPOSALMIN = 120;
+  let TTSON = true, AMBIENTON = true, SOCIALMIN = 60, MAXSTAFF = 18, PROPOSALMIN = 120;
   let PROJECTS_CACHE = [];
   let _plistScroll = 0, _plistQ = "";  // preserve project-list scroll + search across live refreshes
   const _opsScroll = {};  // OFFICE OPS per-tab scroll memory — survives action re-renders (pin/approve/reject/edit/delete) so the list doesn't jump to top
@@ -2900,6 +2900,8 @@
           <div class="knob"><\/div> 🔊 Sound effects — เสียงประกอบในโลก office</div>
         <div class="switch ${TTSON ? "on" : ""}" id="ttsSw" style="margin-top:6px">
           <div class="knob"></div> 🗣 Agent voices — เสียงพูดของ agents (ต้องมี Gemini key)</div>
+        <div class="switch ${AMBIENTON ? "on" : ""}" id="ambientSw" style="margin-top:6px">
+          <div class="knob"></div> 💬 Ambient murmurs — agents พูดคนเดียวเป็นครั้งคราว (ไม่กระทบ SOCIAL)</div>
         <div class="switch" id="startupSw" style="margin-top:6px">
           <div class="knob"></div> 🚀 Start at login — เปิดออฟฟิศอัตโนมัติเมื่อเข้าสู่ระบบ</div>
         <div class="field" style="margin-top:8px"><label>💓 DIRECTOR HEARTBEAT — รอบตรวจภาพรวม/ตารางงาน (แจ้งเฉพาะที่ควรรู้)</label>
@@ -3069,6 +3071,11 @@
         TTSON = !TTSON;
         await api("/registry/tts", { enabled: TTSON });
         e.currentTarget.classList.toggle("on", TTSON);
+      };
+      modalCard.querySelector("#ambientSw").onclick = async (e) => {
+        AMBIENTON = !AMBIENTON;
+        await api("/registry/ambient", { enabled: AMBIENTON });
+        e.currentTarget.classList.toggle("on", AMBIENTON);
       };
       const socSel = modalCard.querySelector("#socSel");
       socSel.value = String(SOCIALMIN);
@@ -5423,6 +5430,7 @@
       HEARTBEAT = Number(ev.heartbeatMin || 0);
       if (ev.features) FEATURES = ev.features;
       TTSON = ev.tts !== false;
+      AMBIENTON = ev.ambient !== false;
       SOCIALMIN = Number(ev.socialMin !== undefined ? ev.socialMin : 60);
       PROPOSALMIN = Number(ev.proposalMin !== undefined ? ev.proposalMin : 120);
       MAXSTAFF = Number(ev.maxStaff || 18);
